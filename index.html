@@ -431,6 +431,8 @@ table.tbl td.num, table.tbl th.num { text-align: right; font-variant-numeric: ta
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-delay: 0s !important; transition-duration: .01ms !important; }
   .toast, .banner, .splash, .floater { display: none !important; }
+  /* a must-see notice still shows, without its motion; its timer removes it */
+  .toast.must { display: flex !important; animation: none !important; }
 }
 
 /* ===== v2 layout: seats around a felt table, a brass-railed board in the middle, your mat at your edge ===== */
@@ -1215,6 +1217,45 @@ body[data-view="table"] .online-pill { bottom: auto; top: 60px; left: auto; righ
 .lackb .ic { width: 10px; height: 10px; flex: none; }
 .pcw .pcard.cant { padding-bottom: 22px; }
 .tip .lk { margin-top: 4px; }
+/* ---------- notices the player must see (ruled 13 Nov): a skipped annex or hire and why ---------- */
+/* above popups (50, 60) and the tutorial's dimmed ring (70), below the tutorial box (72) and the replay veil (80) */
+.toasts.over { z-index: 71; }
+.toast.must { pointer-events: auto; cursor: pointer; align-items: flex-start; border-radius: 10px; padding: 9px 16px 10px 11px; border-color: #e0a33c; box-shadow: 0 12px 30px rgba(0, 0, 0, .6), 0 0 0 1px rgba(224, 163, 60, .25), 0 0 22px rgba(224, 163, 60, .18); max-width: min(620px, 94vw); line-height: 1.55; }
+.toast.must > .ic { color: #f0b54a; margin-top: 2px; flex: none; }
+.toast.must .nb { display: grid; gap: 2px; }
+.toast.must .nb > b { font-size: 14px; color: #ffe2a8; }
+.toast.must .nb .tiny { color: #bfb39c; }
+.toast.must .lackw { color: #ffb4a4; font-weight: 700; margin-left: 6px; }
+.logbox .le.lc-skip { color: #e9c27a; font-style: italic; }
+/* ---------- regime hovers (ruled 13 Nov): the next era's chooser and every era's regimes ---------- */
+.tip.xwide { max-width: min(520px, calc(100vw - 12px)); }
+.regcard .nextpick { margin: 7px 12px 0; padding-top: 7px; border-top: 1px dashed rgba(36, 31, 24, .22); display: flex; flex-wrap: wrap; gap: 4px 6px; align-items: center; font-size: 12px; color: var(--ink-soft); cursor: help; }
+.regcard .nextpick .k { flex: 1 0 100%; font-weight: 600; }
+.regcard .nextpick b { color: color-mix(in srgb, var(--pc) 58%, #000 42%); font-size: 13px; }
+.regcard .nextpick .n { margin-left: auto; font-size: 11.5px; }
+.regcard .nextpick .n .sym { margin-right: 0; }
+.regcard .nextpick .n b.c { color: var(--ink); font-size: 12.5px; }
+.regcard .nextpick.last { cursor: default; font-style: italic; }
+.rtrack .era[data-tip] { cursor: help; }
+.tip .ev { font-size: 12px; color: var(--ink-soft); margin-top: 2px; }
+.tip .np { margin-top: 5px; display: flex; flex-wrap: wrap; gap: 4px; align-items: center; font-size: 12px; }
+.tip .nprows { margin: 6px 0 4px; display: grid; gap: 3px; }
+.tip .nprow { display: grid; grid-template-columns: auto 1fr auto auto auto; gap: 7px; align-items: center; font-size: 12px; padding: 2px 6px; border-radius: 6px; }
+.tip .nprow.me { background: color-mix(in srgb, var(--pc) 22%, transparent); }
+.tip .nprow .nm { font-weight: 600; }
+.tip .nprow .pk { font-size: 10.5px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: #3b3122; color: #ffe2a8; }
+.tip .npwhy { margin: 2px 0 4px; }
+.tip .nfoot { margin-top: 5px; color: var(--ink-soft); line-height: 1.5; }
+.tip .rg { margin-top: 6px; padding: 5px 7px 6px; border-radius: 7px; border-left: 3px solid var(--lc); background: rgba(36, 31, 24, .04); }
+.tip .rg.on { background: color-mix(in srgb, var(--lc) 18%, transparent); }
+.tip .rg .rh { display: flex; flex-wrap: wrap; gap: 2px 6px; align-items: center; }
+.tip .rg .rh > b { font-size: 13px; color: color-mix(in srgb, var(--lc) 62%, #000 38%); }
+.tip .rg .rh .cico { width: 18px; height: 18px; }
+.tip .rg .rh .sym { margin-right: 0; }
+.tip .rg .rd { font-size: 11.5px; line-height: 1.6; color: var(--ink); }
+.tip .rg .rd b { color: var(--ink-soft); font-weight: 600; }
+.tip .rtag { font-size: 10.5px; font-weight: 800; padding: 0 6px; border-radius: 999px; background: #3b3122; color: #ffe2a8; }
+.tip .rtag.no { background: #d9ccb0; color: #5a4b33; }
 .tip .lk > b { color: #c0392b; }
 .tip .lk .lkn { font-weight: 700; }
 .acard .mode.off { opacity: .6; cursor: help; }
@@ -5754,6 +5795,20 @@ function execPay(G, P, cost, plan) {
   if (P.grav < 0) throw new Error('negative grav');
 }
 K.payPlan = payPlan; K.execPay = execPay; K.takeGoods = takeGoods;
+// what a payment lacks, for a table that has to say why something did not happen (ruled 13 Nov): the goods short of the
+// cost (none with บริษัทร่วมทุน, which turns them into grav at 3 a unit) and the grav still short once the joint venture and
+// the mortgage loan (up to 5) have had their say. Reads payPlan's rules without paying; no rng
+function payLack(G, P, cost, opts) {
+  opts = opts || {};
+  const joint = !!(opts.joint && has(P, 'บริษัทร่วมทุน'));
+  const goods = []; let sub = 0;
+  for (const t of GOODS) { const s = Math.max(0, (cost[t] || 0) - goodsOf(P, t)); if (s) { goods.push([t, s]); sub += s; } }
+  const gravNeed = (cost.grav || 0) + (joint ? 3 * sub : 0);
+  const room = opts.loan && has(P, 'เงินกู้จำนองสัมปทาน') ? 5 : 0;
+  return { goods: joint ? [] : goods, grav: Math.max(0, gravNeed - P.grav - room), gravNeed, joint };
+}
+const lackStr = L => L.goods.map(([t, n]) => `${RES_NAME[t]} ${n}`).concat(L.grav ? [`เกรฟ ${L.grav}`] : []).join(' ');
+K.payLack = payLack; K.lackStr = lackStr;
 
 function projectCost(G, P, d, annex) {
   if (annex && G.rules && G.rules.annexFree) return { mat: 0, fuel: 0, food: 0, grav: expansionCost(G, P) };
@@ -6640,6 +6695,12 @@ async function doCommand(G, P, cmd) {
         const v = await ask(G, P, { kind: 'annex', title: `ผนวก ${target.d.name}?`, proj: target, cost: c, free,
           options: [{ value: true, label: !paid ? 'ผนวกโดยไม่เสียค่าใช้จ่าย' : free ? `ผนวก จ่ายค่าขยายดินแดน ${c.grav} เกรฟ` : `ผนวก จ่าย ${costStr(c)}` }, { value: false, label: 'ไม่ผนวก' }] });
         if (v) { execPay(G, P, c, pl); await placeProject(G, P, target, !paid ? 'ผนวกดินแดน (ไม่เสียค่าใช้จ่าย)' : free ? `ผนวกดินแดน (ค่าขยายดินแดน ${c.grav} เกรฟ)` : `ผนวกดินแดน (จ่าย ${costStr(c)})`); annexed = true; P.st.annex++; G.stats.annex++; G.stats.annexByEra[G.era]++; }
+      } else {
+        // rules 10.6 give the winner the right to annex, not the means. A winner who cannot pay is not asked, so the table
+        // says why (ruled 13 Nov): what the annex costs and what is missing. Bookkeeping only: no rng, no answer
+        const L = payLack(G, P, c, { joint: true, loan: true });
+        log(G, `${P.name} ผนวก ${target.d.name} ไม่ได้ ทรัพยากรไม่พอ (ต้นทุน ${costStr(c)} · ขาด ${lackStr(L)}) การ์ดกลับไปใต้กองโครงการ`, 'skip', P.id);
+        await emit(G, 'fx', { t: 'skip', what: 'annex', pid: P.id, name: target.d.name, cost: c, lack: L });
       }
       if (!annexed) deck.push(target);
     } else {
@@ -7390,9 +7451,23 @@ async function councilPhase(G) {
     log(G, `${P.name} รับแรงงาน จ่ายอาหาร ${c} (รวม ${totalWorkers(P)})`, 'eco', P.id);
   };
   const hireCan = P => { if (maxHires(G, P) - P.hiresThisRound <= 0) return null; const c = hireCost(G, P); return c == null || goodsOf(P, 'food') < c ? null : c; };
+  // a state the council does not ask hears why (ruled 13 Nov): the food it lacks for its next worker, the hire it already
+  // took this round (โรงพยาบาลรัฐ), or a full population track, said once a game. after: the state has just hired, so a
+  // used hire is no news. Bookkeeping only: no rng, no answer, so saved games and online peers replay as before
+  const hireSkip = async (P, after) => {
+    const why = P.hired >= 8 ? (P.toldFull ? '' : 'full') : maxHires(G, P) - P.hiresThisRound <= 0 ? (after ? '' : 'used')
+      : goodsOf(P, 'food') < hireCost(G, P) ? 'food' : '';
+    if (!why) return;
+    const n = totalWorkers(P) + 1, cost = hireCost(G, P), have = goodsOf(P, 'food');
+    if (why === 'full') { P.toldFull = true; log(G, `${P.name} มีแรงงานครบ 10 คนแล้ว สภาไม่ถามจ้างแรงงานอีก`, 'skip', P.id); }
+    else if (why === 'used') log(G, `${P.name} รับแรงงานครบสิทธิ์ของรอบนี้ไปแล้ว สภาจึงไม่ถามจ้างอีก`, 'skip', P.id);
+    else log(G, `${P.name} จ้างแรงงานคนที่ ${n} ไม่ได้ อาหารไม่พอ (ต้องใช้ ${cost} มี ${have})`, 'skip', P.id);
+    await emit(G, 'fx', { t: 'skip', what: 'hire', why, after: !!after, pid: P.id, n, cost, have });
+  };
   const seatOrder = []; for (let i = 0; i < G.n; i++) seatOrder.push(G.players[(G.first + i) % G.n]);
   if (G.rules.simul) {
     // rules 0.4: every state that can hire is asked at once; a state allowed two hires is asked again in the next pass
+    for (const P of seatOrder) if (hireCan(P) == null) await hireSkip(P, false);
     let open = seatOrder.filter(P => hireCan(P) != null);
     while (open.length) {
       const costs = open.map(hireCan);
@@ -7401,16 +7476,17 @@ async function councilPhase(G) {
       for (let i = 0; i < open.length; i++) {
         if (!ans[i]) continue;
         await hireNow(open[i], costs[i]);
-        if (hireCan(open[i]) != null) next.push(open[i]);
+        if (hireCan(open[i]) != null) next.push(open[i]); else await hireSkip(open[i], true);
       }
       open = next;
     }
   } else {
     for (const P of seatOrder) {
+      if (hireCan(P) == null) { await hireSkip(P, false); continue; }
       let can = maxHires(G, P) - P.hiresThisRound;
       while (can > 0) {
         const c = hireCost(G, P);
-        if (c == null || goodsOf(P, 'food') < c) break;
+        if (c == null || goodsOf(P, 'food') < c) { await hireSkip(P, true); break; }
         const v = await ask(G, P, hireReq(P, c));
         if (!v) break;
         await hireNow(P, c); can--;
@@ -7478,6 +7554,59 @@ function scoreRegime(G, label, flip) {
   log(G, `${label}${G.regime} (${REG[G.regime].metric}): ${parts.join(' · ')}`, 'score');
 }
 
+// who picks the next regime at the era change (rulebook 11.3): the state holding the most symbols of the base line of the
+// regime in power; a tie goes to the lower legitimacy, then to the seat nearest the first player going round; nobody
+// holding the line: the lowest legitimacy. legitOf and netOf read a state's legitimacy and net score, so the table can
+// preview the pick with what the era change itself hands out before it (eraChooserPreview). why says which rule decided:
+// most, legit, none or trailing, with -seat when the seat order broke the last tie. No rng
+function eraChooserOf(G, legitOf, netOf) {
+  legitOf = legitOf || (P => P.legit); netOf = netOf || (P => P.legit - P.stigma);
+  const base = REG[G.regime].base;
+  const cnt = G.players.map(P => symCount(P, base));
+  const max = Math.max(...cnt);
+  const byFirst = list => { for (let k = 0; k < G.n; k++) { const q = G.players[(G.first + k) % G.n]; if (list.includes(q)) return q; } return list[0]; };
+  let pool, why, top = [];
+  if (G.rules.eraChooser === 'trailing') { const mn = Math.min(...G.players.map(netOf)); pool = G.players.filter(p => netOf(p) === mn); why = 'trailing'; }
+  else if (max <= 0) { const ml = Math.min(...G.players.map(legitOf)); pool = G.players.filter(p => legitOf(p) === ml); why = 'none'; }
+  else {
+    pool = top = G.players.filter(p => cnt[p.id] === max); why = 'most';
+    if (pool.length > 1) { const ml = Math.min(...pool.map(legitOf)); pool = pool.filter(p => legitOf(p) === ml); why = 'legit'; }
+  }
+  if (pool.length > 1) why += '-seat';
+  return { chooser: byFirst(pool), base, cnt, max, why, top, pool };
+}
+// the pick as it would fall if the era changed now, for the table to show (ruled 13 Nov). The era change hands out
+// legitimacy before it picks (พงศาวดาร to the lowest, the old house's prestige to the AI levels that have it) and
+// องค์กรจันทร์สีชาด discards a stigma from era III on, so the preview counts them the same way. set and options: the regimes
+// the chooser picks from. null in the last era
+function eraChooserPreview(G) {
+  if (G.over || G.era >= D.eras.length - 1) return null;
+  const minL = Math.min(...G.players.map(P => P.legit));
+  const lv = P => (!P.human && K.AI && K.AI.LEVELS && K.AI.LEVELS[P.level] && K.AI.LEVELS[P.level].legitEra) || 0;
+  const add = P => (has(P, 'พงศาวดาร') && P.legit === minL ? 2 : 0) + lv(P);
+  const cut = P => (G.era + 1 >= 2 && sup(P, 'crimson') && P.stigma > 0 ? 1 : 0);
+  const r = eraChooserOf(G, P => P.legit + add(P), P => P.legit + add(P) - P.stigma + cut(P));
+  r.legit = G.players.map(P => P.legit + add(P));
+  r.set = G.era + 1 === 2 ? 'modern' : G.regimeSet;
+  r.options = D.regimes.filter(x => x.set === r.set && x.name !== G.regime).map(x => x.name);
+  return r;
+}
+K.eraChooserOf = eraChooserOf; K.eraChooserPreview = eraChooserPreview;
+// the log line that names the chooser and the rule that made it the chooser
+function chooserLine(G, pk) {
+  const C = pk.chooser, ln = LINE_NAME[pk.base];
+  const others = list => { const a = list.filter(q => q !== C).map(q => q.name); return a.length < 2 ? a.join('') : a.slice(0, -1).join(' ') + ' และ' + a[a.length - 1]; };
+  const seat = C.id === G.first ? 'เป็นผู้เล่นคนแรก' : 'นั่งใกล้ผู้เล่นคนแรกที่สุดตามเข็มนาฬิกา';
+  if (pk.why.indexOf('trailing') === 0) return `${C.name} มีคะแนนสุทธิต่ำสุด${pk.why === 'trailing-seat' ? `เท่ากับ${others(pk.pool)} แต่${seat}` : ''} เป็นผู้เลือกระบอบ`;
+  if (pk.why === 'none') return `ไม่มีรัฐใดถือสัญลักษณ์${ln} ${C.name} มีความชอบธรรมน้อยที่สุด เป็นผู้เลือกระบอบ`;
+  if (pk.why === 'none-seat') return pk.pool.length === G.n ? `ไม่มีรัฐใดถือสัญลักษณ์${ln} และทุกรัฐมีความชอบธรรมเท่ากัน ${C.name} ${seat} จึงเป็นผู้เลือกระบอบ`
+    : `ไม่มีรัฐใดถือสัญลักษณ์${ln} ${C.name} มีความชอบธรรมน้อยที่สุดเท่ากับ${others(pk.pool)} แต่${seat} เป็นผู้เลือกระบอบ`;
+  const tie = pk.why === 'legit' ? ` เสมอกับ${others(pk.top)} แต่มีความชอบธรรมน้อยกว่า`
+    : pk.why === 'legit-seat' ? ` เสมอกับ${others(pk.top)} ${pk.pool.length === pk.top.length ? 'ความชอบธรรมก็เท่ากัน' : `ความชอบธรรมน้อยที่สุดเท่ากับ${others(pk.pool)}`} แต่${seat}` : '';
+  return `${C.name} ถือสัญลักษณ์${ln}มากที่สุด (${pk.cnt[C.id]})${tie} เป็นผู้เลือกระบอบ`;
+}
+K.chooserLine = chooserLine;
+
 async function eraChange(G) {
   G.phase = 'era';
   const prev = G.regime;
@@ -7489,21 +7618,10 @@ async function eraChange(G) {
   for (const P of G.players) levelPrestige(G, P);
   // องค์กรจันทร์สีชาด: at the start of era III and of era IV the holder discards one of its stigma
   if (G.era >= 2) for (const P of G.players) if (sup(P, 'crimson') && P.stigma > 0) { addStigma(G, P, -1, 'องค์กรจันทร์สีชาด ล้างตราบาป', `ต้นยุค ${eraD(G).id}`); log(G, `${P.name} ทิ้งตราบาป 1 ใบจากองค์กรจันทร์สีชาด (เหลือ ${P.stigma})`, 'sup', P.id); }
-  // succession
-  const base = REG[prev].base;
-  const cnt = G.players.map(P => symCount(P, base));
-  const max = Math.max(...cnt);
-  let chooser;
-  const byFirst = list => { for (let k = 0; k < G.n; k++) { const q = G.players[(G.first + k) % G.n]; if (list.includes(q)) return q; } return list[0]; };
-  if (G.rules.eraChooser === 'trailing') { const nets = G.players.map(p => p.legit - p.stigma); const mn = Math.min(...nets); chooser = byFirst(G.players.filter(p => p.legit - p.stigma === mn)); }
-  else if (max <= 0) { const minLeg = Math.min(...G.players.map(p => p.legit)); chooser = byFirst(G.players.filter(p => p.legit === minLeg)); }
-  else {
-    let tied = G.players.filter(p => cnt[p.id] === max);
-    if (tied.length > 1) { const ml = Math.min(...tied.map(p => p.legit)); tied = tied.filter(p => p.legit === ml); }
-    chooser = byFirst(tied);
-  }
+  // succession (rulebook 11.3); the table previews the same pick through eraChooserPreview
+  const pick = eraChooserOf(G), chooser = pick.chooser;
   const opts = D.regimes.filter(r => r.set === G.regimeSet && r.name !== prev).map(r => ({ value: r.name, label: r.name, sub: `${LINE_NAME[r.line]} · วัด: ${r.metric} · ${r.policy} · ฐาน: ${LINE_NAME[r.base]}`, reg: r }));
-  log(G, G.rules.eraChooser === 'trailing' ? `${chooser.name} มีคะแนนสุทธิต่ำสุด เป็นผู้เลือกระบอบ` : `${chooser.name} ถือสัญลักษณ์${LINE_NAME[base]}มากที่สุด (${cnt[chooser.id]}) เป็นผู้เลือกระบอบ`, 'reg', chooser.id);
+  log(G, chooserLine(G, pick), 'reg', chooser.id);
   G.stats.eraChoosers = (G.stats.eraChoosers || []).concat([{ round: G.round, id: chooser.id }]);
   const name = await ask(G, chooser, { kind: 'regimeChoice', title: `เปลี่ยนยุค: ${chooser.name} เลือกระบอบใหม่`, options: opts, why: 'era' });
   setRegime(G, name, `สืบทอดเมื่อเปลี่ยนยุค โดย ${chooser.name}`);
@@ -8840,7 +8958,7 @@ function showTip(el) {
   else if (el.dataset.tip) html = el.dataset.tip;
   if (!html) return;
   tipFor = el;
-  tipEl.innerHTML = html; tipEl.classList.toggle('wide', !!el.dataset.tipw); tipEl.classList.add('on');
+  tipEl.innerHTML = html; tipEl.classList.toggle('wide', !!el.dataset.tipw); tipEl.classList.toggle('xwide', el.dataset.tipw === '2'); tipEl.classList.add('on');
   const r = el.getBoundingClientRect(), tw = tipEl.offsetWidth, th = tipEl.offsetHeight;
   let x = r.left + r.width / 2 - tw / 2, y = r.top - th - 8;
   if (y < 6) y = r.bottom + 8;
@@ -8864,16 +8982,49 @@ let toastBox = null;
 const fxOn = () => !!G && settings.fx && !reduceMotion() && !(S && S.replaying) && (settings.speed > 0 || !!meP());
 // toasts are table effects and follow the effects switch; notify() is for messages the player must see
 function notify(html, life) { toast(html, null, life, true); }
-function toast(html, P, life, always) {
-  if (!always && !fxOn()) return;
+// cls 'must': a notice the player has to read (ruled 13 Nov). The table's passing toasts give way to it when the stack is
+// full, it closes on a click, and while it is up the stack sits above an open popup, since the next decision often opens
+// right after it
+function toast(html, P, life, always, cls) {
+  if (!always && !fxOn()) return null;
   if (!toastBox || !toastBox.isConnected) { toastBox = document.createElement('div'); toastBox.className = 'toasts'; document.body.appendChild(toastBox); }
-  while (toastBox.children.length >= 3) toastBox.firstElementChild.remove();
-  const el = document.createElement('div'); el.className = 'toast';
+  while (toastBox.children.length >= 3) ([...toastBox.children].find(x => !x.classList.contains('must')) || toastBox.firstElementChild).remove();
+  const el = document.createElement('div'); el.className = 'toast' + (cls ? ' ' + cls : '');
   const ms = life || 2600;
   el.style.setProperty('--life', (ms / 1000) + 's');
   if (P) el.style.setProperty('--pc', P.color);
   el.innerHTML = html;
-  toastBox.appendChild(el); setTimeout(() => el.remove(), ms + 500);
+  const gone = () => { el.remove(); toastLayer(); };
+  if (el.classList.contains('must')) el.onclick = gone;
+  toastBox.appendChild(el); setTimeout(gone, ms + 500);
+  toastLayer();
+  return el;
+}
+function toastLayer() { if (toastBox) toastBox.classList.toggle('over', !!toastBox.querySelector('.must')); }
+// what the game skipped for a player and why (ruled 13 Nov): an annex the won exploration could not pay for, or a council
+// that did not ask to hire. The engine logs it for every state; the player it concerns also gets this notice, which shows
+// with the table effects off
+function skipNotice(P, d) {
+  const toks = list => list.map(([t, n]) => rb(t, n)).join(' ');
+  const box = (title, body, foot) => `${ICON('x')}<div class="nb"><b>${title}</b><div>${body}</div>${foot ? `<div class="tiny">${foot}</div>` : ''}</div>`;
+  const who = G.players.filter(isMine).length > 1 ? `${esc(P.name)}: ` : '';   // more than one player at this screen
+  let html = '', life = 5000;
+  if (d.what === 'annex') {
+    const cost = GOODS.filter(t => d.cost[t]).map(t => [t, d.cost[t]]).concat(d.cost.grav ? [['grav', d.cost.grav]] : []);
+    const lack = d.lack.goods.concat(d.lack.grav ? [['grav', d.lack.grav]] : []);
+    const notes = ['ผลผลิตจากการบุกเบิกยังได้ตามปกติ ส่วนการ์ดกลับไปอยู่ใต้กองโครงการ'];
+    if (d.lack.joint) notes.push('บริษัทร่วมทุนจ่ายสินค้าที่ขาดแทนหน่วยละ 3 เกรฟ คิดรวมไว้แล้ว');
+    if (K.has(P, 'เงินกู้จำนองสัมปทาน')) notes.push('เงินกู้จำนองสัมปทานกู้เพิ่มได้ถึง 5 เกรฟ คิดรวมไว้แล้ว');
+    html = box(`${who}ผนวก ${esc(d.name)} ไม่ได้ ทรัพยากรไม่พอ`, `ต้นทุนผนวก ${toks(cost)}<span class="lackw">ขาด ${toks(lack)}</span>`, notes.join(' · '));
+    life = 7500;
+  } else if (d.why === 'food') {
+    html = box(`${who}${d.after ? `จ้างแรงงานคนที่ ${d.n} ต่อไม่ได้` : 'สภานี้จ้างแรงงานไม่ได้'} อาหารไม่พอ`,
+      `แรงงานคนที่ ${d.n} ใช้ ${rb('food', d.cost)} มีอยู่ ${rb('food', d.have)}<span class="lackw">ขาด ${rb('food', d.cost - d.have)}</span>`,
+      'อาหารนับรวมทั้งในคลังและบนโครงการ สภาถัดไปถามใหม่ถ้าอาหารพอ');
+    life = 6500;
+  } else if (d.why === 'used') html = box(`${who}สภานี้ไม่ถามจ้างแรงงาน`, 'รอบนี้รัฐของคุณรับแรงงานครบสิทธิ์ไปแล้วก่อนสภาประชุม', '');
+  else if (d.why === 'full') html = box(`${who}แรงงานครบ 10 คนแล้ว`, 'รางประชากรว่างแล้ว สภาจึงไม่ถามจ้างแรงงานอีกจนจบเกม', '');
+  if (html) toast(html, P, life, true, 'must notice');
 }
 function banner(kicker, title, sub, color, life) {
   if (!fxOn()) return;
@@ -9271,6 +9422,10 @@ const TUTORIAL = [
     'บุกเบิกชนะแล้ว จ่ายต้นทุนของโครงการนั้นโดยลดสินค้าได้ 2 หน่วย การ์ดใบนั้นจะเป็นโครงการของเจ้า ถ้าไม่ผนวก การ์ดจะกลับไปอยู่ใต้กองโครงการ',
     'นี่คือทางได้โครงการที่ถูกกว่าตลาด แลกกับความเสี่ยงของการรบที่เจ้าเพิ่งผ่านมา',
     'ผนวกเมื่อมีแรงงานพอทำงาน หรือเมื่อระบอบนับจำนวนโครงการ'] },
+  { id: 'annexLack', on: 'skip:annex', face: 'think', faces: ['think', 'explain', 'explain'], title: 'ผนวกไม่ได้', say: [
+    'ชนะแล้วก็จริง แต่ทรัพยากรของเจ้าไม่พอจ่ายต้นทุนผนวก ระบบจึงไม่ถาม กล่องเตือนด้านบนบอกไว้ว่าขาดอะไรไปเท่าไร',
+    'ผลผลิตจากการบุกเบิกเจ้ายังได้ตามปกติ ส่วนดินแดนกลับไปอยู่ใต้กองโครงการ ต้นทุนผนวกคือต้นทุนบนการ์ดลด 2 หน่วยสินค้า บวกค่าขยายดินแดนถ้ามี',
+    'ก่อนออกบุกเบิกครั้งหน้า เก็บสินค้ากับเกรฟไว้เผื่อผนวกด้วย ชัยชนะที่ยึดดินแดนไว้ไม่ได้ ได้กลับบ้านแค่ผลผลิตรอบเดียว'] },
   { id: 'council', on: 'phase:council', focus: '#scores', face: 'explain', faces: ['explain', 'smile', 'ask'], title: 'ประชุมสภา', say: [
     'การ์ดคืนมือ ทุกรัฐรับ 2 เกรฟ สภาจัดอันดับตามมาตรวัด อันดับต้น ๆ ได้แต้มต่ออันดับ ถ้าสามอันดับแรกมีรัฐเสมอกัน รัฐที่นำอยู่คนเดียวเสีย 1 แต้มเป็นภาระผู้นำ แล้วทุกรัฐตัดสินใจจ้างแรงงานพร้อมกัน',
     'ผู้นำต้องรักษาลำดับชั้นการปกครองให้เสถียร สภาที่เรียงอันดับไม่ครบคือสภาที่ผู้นำคุมไม่อยู่ ภาระนี้กับกฎที่ให้รัฐที่ตามหลังได้เปิดรอบก่อน คือแรงต้านไม่ให้รัฐที่นำวิ่งหนีไปคนเดียว',
@@ -9279,6 +9434,10 @@ const TUTORIAL = [
     'ทุกสภาจ้างแรงงานได้ 1 คน จ่ายเป็นอาหาร คนที่ 3 ราคา 2 แล้วแพงขึ้นคนละ 1',
     'แรงงานคือคอขวดของการผลิต และบางระบอบนับจำนวนแรงงานเป็นคะแนน คนที่ทำงานให้เจ้าต้องได้กินอิ่ม เรื่องนี้เราถือมาก',
     'จ้างเมื่อมีโครงการรอแรงงานอยู่ ถ้าแรงงานล้นโครงการ อาหารเอาไปทำอย่างอื่นจะคุ้มกว่า'] },
+  { id: 'hireLack', on: 'skip:hire:food', face: 'explain', faces: ['explain', 'think', 'smile'], title: 'จ้างแรงงานไม่ได้', say: [
+    'สภานี้ไม่ถามเจ้าเรื่องจ้างแรงงาน เพราะอาหารที่มีไม่พอจ่ายแรงงานคนถัดไป กล่องเตือนด้านบนบอกตัวเลขไว้แล้ว',
+    'ทุกสภาจ้างได้ 1 คน คนที่ 3 ราคาอาหาร 2 แล้วแพงขึ้นคนละ 1 อาหารนับรวมทั้งในคลังและบนโครงการ',
+    'อยากได้คนเพิ่มก็เก็บอาหารไว้ให้พอก่อนสภาประชุม สภาถัดไปจะถามเจ้าใหม่'] },
   { id: 'flip', on: 'fx:flip', focus: '#b-cur', face: 'surprise', faces: ['surprise', 'explain', 'think'], title: 'กระแสพลิกระบอบ', say: [
     'ดูนั่นสิ กระแสสายหนึ่งถึงจุดเปลี่ยนแล้ว ระบอบของสายนั้นขึ้นครองทันที สภานับคะแนนใต้ระบอบใหม่ทันที แล้วกระแสสายนั้นกลับเป็น 0',
     'การนับทันทีทำให้การดันกระแสได้ผลตอบแทนเลย ถ้าพลิกระหว่างขั้นบริหาร สภาท้ายรอบก็นับใต้ระบอบใหม่อีกครั้ง',
@@ -11536,12 +11695,12 @@ function renderBoard() {
     }
     tr.innerHTML = `<div class="rtrack" data-anchor="track">${h}<span class="rmark" id="rmark">${ICON('crown')}</span></div><div class="phases" id="phases"></div>`;
   }
-  tr.querySelectorAll('.era').forEach(el => el.classList.toggle('now', +el.dataset.era === G.era));
+  tr.querySelectorAll('.era').forEach(el => { const k = +el.dataset.era; el.classList.toggle('now', k === G.era); el.dataset.tip = eraTip(k); el.dataset.tipw = '2'; });
   tr.querySelectorAll('.cell').forEach(c => { const n = +c.dataset.rc; c.classList.toggle('past', n < G.round || G.over); c.classList.toggle('cur', n === G.round && !G.over); });
   placeRoundMarker();
   setHTML('phases', ['production', 'admin', 'council'].map(p => `<span class="${G.phase === p ? 'on' : ''}" data-g="${PHASE_NAME[p]}">${PHASE_NAME[p]}</span>`).join('<i>›</i>') + (G.phase === 'era' ? '<i>›</i><span class="on">เปลี่ยนยุค</span>' : ''));
   const pts = K.rankPts(G);
-  setHTML('b-reg', `<div data-anchor="regime">${regimeCardHtml(reg, { extra: `<div class="pts" data-g="แต้มต่ออันดับ">แต้มต่ออันดับ ${pts.map(p => `<i>${p}</i>`).join('')}</div>` })}</div>`);
+  setHTML('b-reg', `<div data-anchor="regime">${regimeCardHtml(reg, { extra: `<div class="pts" data-g="แต้มต่ออันดับ">แต้มต่ออันดับ ${pts.map(p => `<i>${p}</i>`).join('')}</div>${nextPickHtml()}` })}</div>`);
   renderCurrents();
   // supply: only counts that matter at the table
   const pile = (n, l, tip, anc, cls) => `<div class="pile ${cls || ''}" data-tip="${esc(tip)}" data-anchor="${anc}"><div class="pn">${n}</div><div class="pl">${l}</div></div>`;
@@ -11558,6 +11717,69 @@ function renderBoard() {
   const me = meP();
   const mk = G.market.map(pr => projCardHtml(pr, Object.assign({ isNew: isNew(pr.uid) }, myProjView(me, pr)))).join('');
   setHTML('b-market', `<div class="b-label"><span data-g="ตลาดโครงการ">ตลาดโครงการ ยุค ${e.id}</span></div><div class="market" data-anchor="market">${mk || '<span class="muted small">ตลาดว่าง</span>'}</div>`);
+}
+// ---------- regime hovers (ruled 13 Nov) ----------
+// who would pick the regime of the next era if the era changed now (rules 11.3, read by the engine's eraChooserPreview),
+// and the regimes that can rule in every era, so nobody has to open the rulebook mid-game to know either
+const SET_NAME = { classic: 'ชุดคลาสสิก', modern: 'ชุดสมัยใหม่' };
+const eraSet = k => (k >= 2 ? 'modern' : 'classic');
+const thaiList = a => (a.length < 2 ? a.join('') : a.slice(0, -1).join(' ') + ' และ' + a[a.length - 1]);
+function nextPickHtml() {
+  if (G.phase === 'era' && !G.over) return `<div class="nextpick last">ยุค ${esc(K.eraD(G).id)} เริ่มแล้ว กำลังเลือกระบอบของยุคนี้</div>`;
+  const pv = K.eraChooserPreview(G);
+  if (!pv) return `<div class="nextpick last">ยุคสุดท้าย ระบอบนี้ไม่มีการสืบทอดตอนเปลี่ยนยุคอีก</div>`;
+  const C = pv.chooser, nx = K.data().eras[G.era + 1], n = pv.cnt[C.id];
+  const what = pv.why.indexOf('trailing') === 0 ? 'คะแนนสุทธิต่ำสุด' : n ? `<span class="sym ln-${pv.base}">${LN[pv.base]}</span> <b class="c">${n}</b>` : `ยังไม่มีใครถือ${LN[pv.base]}`;
+  return `<div class="nextpick" data-anchor="nextpick" data-tipw="2" data-tip="${esc(nextPickTip(pv))}"><span class="k">ผู้เลือกระบอบยุค ${esc(nx.id)} ถ้าเปลี่ยนยุคตอนนี้</span>${pFlag(C, 'xs')}<b style="--pc:${C.color}">${esc(C.name)}</b><span class="n">${what}</span></div>`;
+}
+function nextPickTip(pv) {
+  const C = pv.chooser, nx = K.data().eras[G.era + 1], ln = LN[pv.base], trailing = pv.why.indexOf('trailing') === 0;
+  const names = list => thaiList(list.map(q => `<b>${esc(q.name)}</b>`));
+  const grp = list => (list.length === G.n ? 'ทุกรัฐ' : names(list));
+  const seat = (C.id === G.first ? `${names([C])} เป็นผู้เล่นคนแรกจึงได้เลือก` : `รัฐที่นั่งใกล้ผู้เล่นคนแรกที่สุดตามเข็มนาฬิกาได้เลือก ผู้เลือกจึงเป็น${names([C])}`) + ' (ผู้เล่นคนแรกเปลี่ยนทุกสภา)';
+  const why = {
+    most: `${names([C])} ถือ${ln}มากที่สุดคนเดียว`,
+    legit: `${grp(pv.top)} ถือ${ln}เท่ากันที่ ${pv.max} รัฐที่มีความชอบธรรมน้อยกว่าได้เลือก ผู้เลือกจึงเป็น${names([C])}`,
+    'legit-seat': `${grp(pv.top)} ถือ${ln}เท่ากันที่ ${pv.max} ${pv.pool.length === pv.top.length ? 'ความชอบธรรมก็เท่ากัน' : `และ${names(pv.pool)}มีความชอบธรรมน้อยที่สุดเท่ากัน`} ${seat}`,
+    none: `ยังไม่มีรัฐใดถือ${ln} รัฐที่มีความชอบธรรมน้อยที่สุดได้เลือก ผู้เลือกจึงเป็น${names([C])}`,
+    'none-seat': `ยังไม่มีรัฐใดถือ${ln} และ${pv.pool.length === G.n ? 'ทุกรัฐมีความชอบธรรมเท่ากัน' : `${names(pv.pool)}มีความชอบธรรมน้อยที่สุดเท่ากัน`} ${seat}`,
+    trailing: `${names([C])} มีคะแนนสุทธิต่ำสุด`,
+    'trailing-seat': `${grp(pv.pool)} มีคะแนนสุทธิต่ำสุดเท่ากัน ${seat}`,
+  }[pv.why] || '';
+  const order = G.players.slice().sort((a, b) => trailing ? (a.legit - a.stigma) - (b.legit - b.stigma) : pv.cnt[b.id] - pv.cnt[a.id] || pv.legit[a.id] - pv.legit[b.id]);
+  const lg = q => `ความชอบธรรม ${pv.legit[q.id]}${pv.legit[q.id] !== q.legit ? ` (รวม +${pv.legit[q.id] - q.legit} ตอนเปลี่ยนยุค)` : ''}`;
+  let h = `<div class="tt">ใครเลือกระบอบยุค ${esc(nx.id)}<small>ถ้าเปลี่ยนยุคตอนนี้</small></div>`;
+  h += trailing ? '<div>ชุดกฎนี้ให้รัฐที่คะแนนสุทธิต่ำสุดเลือกระบอบตอนเปลี่ยนยุค</div>'
+    : `<div>ตอนเปลี่ยนยุค รัฐที่ถือสัญลักษณ์<span class="sym ln-${pv.base}">${ln}</span>มากที่สุดได้เลือกระบอบของยุคใหม่ เพราะ${ln}เป็นฐานอำนาจของ${esc(G.regime)}ที่ครองอยู่ เสมอกันให้รัฐที่มีความชอบธรรมน้อยกว่าเลือก</div>`;
+  h += `<div class="nprows">${order.map(q => `<div class="nprow${q === C ? ' me' : ''}" style="--pc:${q.color}">${pFlag(q, 'xs')}<span class="nm">${esc(q.name)}</span><span>${trailing ? `สุทธิ <b>${q.legit - q.stigma}</b>` : `${ln} <b>${pv.cnt[q.id]}</b>`}</span><span class="tiny">${lg(q)}</span>${q === C ? '<span class="pk">ผู้เลือก</span>' : '<span></span>'}</div>`).join('')}</div>`;
+  h += `<div class="npwhy">${why}</div>`;
+  h += `<div class="ev">เลือกได้จาก${SET_NAME[pv.set]} ${pv.options.map(esc).join(' · ')}${pv.set === G.regimeSet ? ` (เลือก${esc(G.regime)}ซ้ำไม่ได้)` : ''} ชี้ที่แถบยุค ${esc(nx.id)} บนรางรอบเพื่อดูรายละเอียดทุกใบ</div>`;
+  h += `<div class="tiny nfoot">ผลนี้เปลี่ยนได้จนถึงสภาสุดท้ายของยุค สัญลักษณ์เพิ่มทุกครั้งที่รัฐได้โครงการหรือการ์ดวิจัยใหม่ และถ้ากระแสพลิกหรือรัฐประหารเปลี่ยนระบอบก่อนสิ้นยุค ฐานอำนาจก็เปลี่ยนตามระบอบใหม่</div>`;
+  return h;
+}
+// the era track prints each era's values (rules 4.1); the hover adds how the regime of that era is settled and the five
+// regime cards that can rule in it, with the one in power marked and, for the next era, the chooser if it changed now
+function eraTip(k) {
+  const D = K.data(), e = D.eras[k], E = K.perEra(G), r0 = k * E + 1, set = eraSet(k);
+  if (!e) return '';
+  const pts = G.n === 4 ? e.rank4 : e.rank3;
+  const when = G.over ? '' : k < G.era ? 'ผ่านมาแล้ว' : k === G.era ? 'ยุคนี้' : k === G.era + 1 ? 'ยุคหน้า' : '';
+  let h = `<div class="tt">ยุค ${esc(e.id)} ${esc(e.name)}<small>รอบ ${r0} ถึง ${r0 + E - 1}${when ? ' · ' + when : ''}</small></div>`;
+  h += `<div class="ev">แต้มต่ออันดับ ${pts.join(' / ')} · ตลาดกลางขาย ${e.buy} รับซื้อ ${e.sell} · เกณฑ์การค้ามูลค่าสูง ${e.hv} เกรฟ</div>`;
+  const how = k === 0 ? `เริ่มเกมด้วยระบอบ${SET_NAME.classic}ที่สุ่มขึ้นมาหนึ่งใบ`
+    : k === 2 ? `เข้ายุค III แล้ว${SET_NAME.classic}ออกจากเกม ผู้เลือกระบอบเลือกได้ทั้งห้าใบของ${SET_NAME.modern}`
+      : `ตอนเข้ายุค ${esc(e.id)} ผู้เลือกระบอบเลือกได้ทุกใบของ${SET_NAME[set]} ยกเว้นระบอบที่ครองอยู่ตอนนั้น`;
+  h += `<div class="ev">${how} ระหว่างยุค ระบอบเปลี่ยนได้อีกด้วยกระแสพลิกหรือรัฐประหาร</div>`;
+  const pv = k === G.era + 1 && G.phase !== 'era' ? K.eraChooserPreview(G) : null;
+  if (pv) h += `<div class="np">ถ้าเปลี่ยนยุคตอนนี้ ${pFlag(pv.chooser, 'xs')}<b>${esc(pv.chooser.name)}</b> เป็นผู้เลือก ชี้ที่แถวผู้เลือกบนการ์ดระบอบเพื่อดูเหตุผล</div>`;
+  h += D.regimes.filter(r => r.set === set).map(r => {
+    const on = !G.over && k === G.era && r.name === G.regime;
+    const no = !!pv && pv.set === G.regimeSet && r.name === G.regime;
+    const tag = on ? '<span class="rtag">ครองอยู่</span>' : no ? '<span class="rtag no">เลือกซ้ำไม่ได้ถ้ายังครองอยู่</span>' : '';
+    return `<div class="rg${on ? ' on' : ''}" style="--lc:var(--${r.line})"><div class="rh">${cardIco(r.name)}<b>${esc(r.name)}</b><span class="sym ln-${r.line}">สาย${LN[r.line]}</span><span class="tiny">ฐานอำนาจ <span class="sym ln-${r.base}">${LN[r.base]}</span></span>${tag}</div>`
+      + `<div class="rd"><b>วัด</b> ${esc(r.metric)} · <b>นโยบาย</b> ${esc(r.policy)}</div></div>`;
+  }).join('');
+  return h;
 }
 function placeRoundMarker() {
   const m = document.getElementById('rmark'); if (!m) return;
@@ -11587,7 +11809,7 @@ function renderCurrents() {
     const disc = el.querySelector('.disc'); disc.style.bottom = (v * 17) + 'px'; disc.textContent = v;
     el.querySelector('.fill').style.height = (v ? v * 17 + 13 : 0) + 'px';
     el.querySelector('.creg').textContent = r ? (ruling ? 'ครองอยู่' : r.name) : '';
-    el.dataset.tip = r ? `<div class="tt">${esc(LN[l])} ${v}/${G.tip}</div><div>${ruling ? 'ระบอบของสายนี้ครองอยู่' : 'ถ้าพลิกจะเป็น ' + esc(r.name)}</div><div>มาตรวัด: ${gloss(r.metric)}</div><div>นโยบาย: ${gloss(r.policy)}</div>` : '';
+    el.dataset.tip = r ? `<div class="tt">${esc(LN[l])} ${v}/${G.tip}</div><div>${ruling ? 'ระบอบของสายนี้ครองอยู่' : 'ถ้าพลิกจะเป็น ' + esc(r.name)}</div><div>มาตรวัด: ${gloss(r.metric)}</div><div>นโยบาย: ${gloss(r.policy)}</div><div>ฐานอำนาจ: <span class="sym ln-${r.base}">${esc(LN[r.base])}</span></div>` : '';
   }
 }
 // legitimacy rail with one pawn per state
@@ -11752,6 +11974,7 @@ function processLogFx() {
     const P = l.p >= 0 ? G.players[l.p] : null;
     const h = meP();
     if (l.cls === 'era' && l.msg.indexOf('เข้าสู่ยุค') >= 0) { splash(G.era); sfx('era'); }
+    else if (l.cls === 'reg' && l.msg.indexOf('เป็นผู้เลือกระบอบ') >= 0) { if (P && P !== h) toast(`${pFlag(P, 'xs')}${esc(l.msg)}`, P, 4200); }
     else if (l.cls === 'reg') {
       const m = l.msg.match(/เป็น (.+?) \((.+)\)$/);
       const reg = m && K.REG[m[1]];
@@ -11964,7 +12187,8 @@ function contextHtml(P, req) {
     case 'spyglass': return `<div class="small">การ์ด 2 ใบบนสุดของ${esc(req.S.name)}: <b>${esc(req.text)}</b></div>`;
     case 'labResearch': return `<div class="ctx">${researchCardHtml(req.card, { cost: req.cost })}</div>`;
     case 'scoutDeck': case 'scout': return liveHtml(req.live);
-    case 'regimeChoice': return `<div class="small muted ctxline">${req.why === 'coup' ? 'ระบอบใหม่มีผลทันที นับคะแนนตอนสภารอบนี้' : 'ระบอบนี้ใช้ตั้งแต่รอบแรกของยุคใหม่'} · ตัวเลขใต้การ์ดคือค่ามาตรวัดตอนนี้และแต้มที่แต่ละรัฐจะได้</div>`;
+    case 'regimeChoice': { const why = req.why === 'era' ? [...G.log].reverse().find(l => l.cls === 'reg' && l.msg.indexOf('เป็นผู้เลือกระบอบ') >= 0) : null;
+      return `${why ? `<div class="small ctxline">${esc(why.msg)}</div>` : ''}<div class="small muted ctxline">${req.why === 'coup' ? 'ระบอบใหม่มีผลทันที นับคะแนนตอนสภารอบนี้' : 'ระบอบนี้ใช้ตั้งแต่รอบแรกของยุคใหม่'} · ตัวเลขใต้การ์ดคือค่ามาตรวัดตอนนี้และแต้มที่แต่ละรัฐจะได้</div>`; }
     case 'command': return `<div class="small muted ctxline">จ่ายอาหาร 1 เป็นเสบียง${G.regime === 'ระบอบขุนศึก' ? ' (ระบอบขุนศึกไม่ต้องจ่าย)' : ''} · โอกาสชนะคำนวณจากข้อมูลที่ทุกรัฐเห็นเท่านั้น · แพ้รับตราบาป 1</div>`;
     case 'milRemove': return `<div class="small muted ctxline">${req.discOnly ? 'เลือกได้เฉพาะการ์ดในกองพัก คือทหารที่เพิ่งรบหรือเพิ่งเข้ากองทัพตั้งแต่การทูตครั้งก่อน · ' : ''}${req.deckOnly ? `ทหารทุกนายในกองทหารของคุณ (${req.options.length} ใบที่ทิ้งได้) ทหารในกองพักยังพักอยู่และไม่อยู่ในแถวนี้ · ${req.incoming && req.incoming.length ? `<b>${esc(req.incoming.join(', '))}</b> รอสับเข้ากองหลังคัดเสร็จ · ` : ''}` : ''}${req.armyAll ? `ทหารทุกนายของคุณทั้งในกองทหารและกองพัก (${req.options.length} ใบที่ทิ้งได้) ใต้การ์ดบอกว่าอยู่กองไหน คัดเสร็จแล้วกองพักทั้งหมดสับรวมเข้ากองทหาร · ${req.incoming && req.incoming.length ? `<b>${esc(req.incoming.join(', '))}</b> รอสับเข้ากองพร้อมกัน · ` : ''}` : ''}การ์ดที่ทิ้งออกจากเกมไม่กลับมาอีก การ์ดห้ามทิ้งไม่ขึ้นในรายการ</div>`;
     case 'researchPick': return `<div class="small muted ctxline">หรือไม่เลือกแล้วรับ ${req.none} เกรฟ${K.sup(P, 'curators') ? ' · เลือกเสร็จแล้ว องค์กรภัณฑารักษ์เก็บใบที่เหลือไว้คว่ำหน้ารัฐได้ 1 ใบ' : ''}</div>`;
@@ -12314,6 +12538,12 @@ async function handleFx(d) {
   if (S.tutorial) {
     if (d.t === 'flip') { render(); await tutorialHook('fx:flip'); }
     if (d.t === 'round' && d.round > 1 && G.roundInEra === 1) await tutorialHook('eraStart:' + G.era);
+  }
+  // a skipped annex or hire speaks to the player it concerns, whatever the effects switch says (ruled 13 Nov)
+  if (d.t === 'skip') {
+    const P = G.players[d.pid];
+    if (P && isMine(P)) { skipNotice(P, d); if (S.tutorial) { render(); await tutorialHook('skip:' + d.what + (d.why ? ':' + d.why : '')); } }
+    return;
   }
   if (!fxOn()) return;
   render();
@@ -12821,7 +13051,7 @@ async function tutorialHook(key) {
   if (!S || !S.tutorial || !S.tutorial.on) return;
   const keys = key === 'eraStart:1' ? ['era', 'eraStart:1'] : [key];
   for (const k of keys) {
-    for (const st of TUTORIAL.filter(t => t.on === k && !S.tutorial.seen.has(t.id))) {
+    for (const st of TUTORIAL.filter(t => [].concat(t.on).includes(k) && !S.tutorial.seen.has(t.id))) {
       S.tutorial.seen.add(st.id);
       await coach(st);
       if (!S || !S.tutorial || !S.tutorial.on) return;
