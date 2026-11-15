@@ -11,6 +11,11 @@
  * วันที่ของบันทึกมาจากนาฬิกาของสคริปต์ และบันทึกที่เคยขึ้นหอในเดือนก่อนส่งซ้ำเข้าเดือนใหม่ไม่ได้
  * ถ้าเคยเผยแพร่รุ่นก่อนแล้ว วางโค้ดนี้ทับ แล้ว Deploy > Manage deployments > แก้ไข > Version: New version ที่อยู่เดิมใช้ต่อได้
  *
+ * รุ่น 6 (15 พ.ย. 2026): เครื่องผู้พัฒนารีเซ็ตหอเกียรติยศได้ทั้งหอ ทุกแถวในชีต "hof" ย้ายไปต่อท้ายชีต "hof-archive"
+ * (คอลัมน์แรกบอกเดือนและวันที่รีเซ็ต) ไม่มีแถวใดถูกลบทิ้ง เวลาที่รีเซ็ตเก็บไว้ใน Script Properties ชื่อ HOF_RESET และหน้าเกม
+ * ทุกเครื่องซ่อนบันทึกที่เกิดก่อนเวลานั้นจากทุกแหล่ง บันทึกใหม่มีเวลาที่สคริปต์รับ (t) และรหัสเกม (gid) ติดมาด้วย
+ * และเครื่องผู้พัฒนาขอบันทึกการเดินของเกมที่ตรงกับผู้ชนะคนหนึ่งได้ เพื่อเล่นซ้ำตรวจผลและการใช้ AI ของเกมช่วยเล่น
+ *
  * สถิติการเล่น: ชีต "daily" นับจำนวนคนเข้าต่อวัน (เบราว์เซอร์ละครั้งต่อวัน แยกสมาชิกกับผู้มาเยือน ไม่มีรายการการเข้าชม)
  * ชีต "games" เก็บเกมที่เริ่ม จบ หรือออกกลางคัน พร้อมผล การ์ดที่แต่ละรัฐเลือก และบันทึกการเดินของแต่ละเกม
  * สองชีตนี้ไม่มีทางอ่านผ่านที่อยู่สาธารณะ อ่านได้จากหน้าสถิติบนเครื่องผู้พัฒนาเท่านั้น (และจากตัวชีตเองในบัญชีของเจ้าของ)
@@ -58,7 +63,7 @@ function doGet(e) {
   if (p.list === 'hof') return out(listCached());
   if (p.list === 'cmt') return out(listComments());
   if (p.list === 'removed') return out(listRemoved());
-  return out({ ok: true, app: 'kirana-federation-hof', v: 5, month: monthStr(Date.now()), count: Math.max(0, sheet().getLastRow() - 1) });
+  return out({ ok: true, app: 'kirana-federation-hof', v: 6, month: monthStr(Date.now()), count: Math.max(0, sheet().getLastRow() - 1), reset: resetAt() });
 }
 
 function doPost(e) {
@@ -72,6 +77,8 @@ function doPost(e) {
   if (b.action === 'ev') return out(addEvent(b));
   if (b.action === 'stats') return out(readStats(b));
   if (b.action === 'replay') return out(readReplay(b));
+  if (b.action === 'hofLog') return out(readHofLog(b));
+  if (b.action === 'reset') return out(resetHof(b));
   return out({ ok: false, err: 'action' });
 }
 
@@ -114,8 +121,10 @@ function addRecord(b) {
   let rec;
   try { rec = cleanRecord(b.rec); } catch (err) { return { ok: false, err: 'record', msg: String(err && err.message || err) }; }
   rec.by = acct; rec.via = 'auto';
-  // the record is dated by the script's clock, in Thai time: the month it counts in is the month it arrived
+  // the record is dated by the script's clock, in Thai time: the month it counts in is the month it arrived; t keeps the
+  // moment, so a reset of the hall (version 6) can tell a record made after it from one made earlier the same day
   rec.at = dayStr(Date.now());
+  rec.t = Date.now();
   const lock = LockService.getScriptLock();
   lock.waitLock(15000);
   try {
@@ -171,6 +180,9 @@ function cleanRecord(d) {
     opp: (Array.isArray(d.opp) ? d.opp : []).slice(0, 3).map(o => ({ state: str(o && o.state, 24), score: int(o && o.score, -300, 300), ai: !!(o && o.ai) })),
   };
   if (['easy', 'normal', 'hard'].indexOf(d.lvl) >= 0) rec.lvl = d.lvl;
+  // the id the statistics gave this game (version 6): the developer's audit finds its move log by it
+  const gid = typeof d.gid === 'string' && /^[a-z0-9]{6,32}$/.test(d.gid) ? d.gid : '';
+  if (gid) rec.gid = gid;
   if (!hofOk(rec)) throw new Error('เกมกับ AI ขึ้นหอได้เฉพาะโต๊ะ 4 รัฐที่ AI ระดับปกติหรือยาก');
   if (rec.legit - rec.stigma !== rec.score) throw new Error('คะแนนสุทธิไม่ตรงกับความชอบธรรมลบตราบาป');
   if (rec.opp.length !== rec.n - 1) throw new Error('จำนวนคู่แข่งไม่ตรงกับจำนวนรัฐ');
@@ -320,6 +332,37 @@ function rollHof(locked) {
   } finally { if (lock) lock.releaseLock(); }
 }
 function archiveSheet() { return sheetNamed(ASHEET, AHEAD); }
+// ---------- the developer resets the whole hall (version 6, ruled 15 Nov 2026) ----------
+// Every row of "hof" moves to the end of "hof-archive" in one write, its first cell naming its month and the day of the
+// reset, so nothing is deleted and a win of before cannot be sent into the hall again (archivedKeys). The time of the
+// reset goes into the script properties, every page reads it from doGet and hides any record made before it, whatever
+// source it came from (this browser, peers online, the repository file). Comments stay. b.confirm must say 'reset'
+function resetAt() { return +(PropertiesService.getScriptProperties().getProperty('HOF_RESET') || 0) || 0; }
+function resetHof(b) {
+  const acct = checkTicket(b.session);
+  if (!acct) return { ok: false, err: 'session' };
+  if (acct !== 'dev') return { ok: false, err: 'forbidden' };
+  if (b.confirm !== 'reset') return { ok: false, err: 'confirm' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const now = Date.now(), sh = sheet(), last = sh.getLastRow();
+    let moved = 0;
+    if (last > 1) {
+      const rows = sh.getRange(2, 1, last - 1, HEAD.length).getValues().filter(r => r.some(x => x !== '' && x != null));
+      if (rows.length) {
+        const ar = archiveSheet(), at = ar.getLastRow() + 1, need = at + rows.length - 1 - ar.getMaxRows();
+        if (need > 0) ar.insertRowsAfter(ar.getMaxRows(), need);
+        ar.getRange(at, 1, rows.length, AHEAD.length).setValues(rows.map(r => [(rowMonth(r) || '-') + ' รีเซ็ต ' + dayStr(now)].concat(r)));
+      }
+      sh.getRange(2, 1, last - 1, HEAD.length).clearContent();
+      moved = rows.length;
+    }
+    PropertiesService.getScriptProperties().setProperty('HOF_RESET', String(now));
+    CacheService.getScriptCache().remove(listKey());
+    return { ok: true, moved: moved, reset: now };
+  } finally { lock.releaseLock(); }
+}
 function archivedKeys() {
   const ss = SpreadsheetApp.getActiveSpreadsheet(), ar = ss.getSheetByName(ASHEET);
   if (!ar || ar.getLastRow() < 2) return new Set();
@@ -520,6 +563,34 @@ function readReplay(b) {
     return log ? { ok: true, log: log } : { ok: false, err: 'nolog' };
   }
   return { ok: false, err: 'id' };
+}
+// the move log of the game a hall of fame record came from (version 6), for the developer's audit: by the game id the
+// record carries, else by the finished games of the same rule set and table size whose result holds a human state of
+// that name and score; the log found must be of the record's seed. Newest first; none: err 'nolog'
+function readHofLog(b) {
+  if (checkTicket(b.session) !== 'dev') return { ok: false, err: 'forbidden' };
+  const q = b.rec && typeof b.rec === 'object' ? b.rec : {};
+  const gid = idOf(q.gid, 6, 32), seed = Number.isInteger(q.seed) && q.seed >= 0 ? q.seed : -1;
+  const state = str(q.state, 24), score = Number.isInteger(q.score) ? q.score : null, rules = word(q.rules, 8), n = int(q.n, 3, 4);
+  if (seed < 0 || (!gid && (!state || score == null))) return { ok: false, err: 'id' };
+  const sh = gameSheet(), last = sh.getLastRow();
+  if (last < 2) return { ok: false, err: 'nolog' };
+  const rows = sh.getRange(2, 1, last - 1, GCOLS).getValues();
+  for (let i = rows.length - 1; i >= 0; i--) {
+    const r = rows[i];
+    if (r[3] !== 'end' || !(+r[17] > 0)) continue;
+    if (gid) { if (String(r[2]) !== gid) continue; }
+    else {
+      if ((rules && String(r[9]) !== rules) || (n && +r[10] !== n)) continue;
+      let res = null; try { res = JSON.parse(r[15] || '{}'); } catch (err) { /* a row edited by hand */ }
+      if (!res || !Array.isArray(res.scores) || !res.scores.some(x => x.human && x.state === state && x.score === score)) continue;
+    }
+    const log = sh.getRange(i + 2, LOG_COL, 1, 4).getValues()[0].map(c => String(c || '').replace(/^~/, '')).join('');
+    let o = null; try { o = JSON.parse(log); } catch (err) { /* a cut log */ }
+    if (!o || !o.cfg || (Number(o.cfg.seed) >>> 0) !== seed) continue;
+    return { ok: true, log: log, gid: String(r[2]), ts: +r[0] };
+  }
+  return { ok: false, err: 'nolog' };
 }
 function dailySheet() { return sheetNamed(DSHEET, DHEAD); }
 function gameSheet() { return sheetNamed(GSHEET, GHEAD); }
