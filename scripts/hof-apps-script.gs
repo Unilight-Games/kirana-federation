@@ -16,6 +16,16 @@
  * ทุกเครื่องซ่อนบันทึกที่เกิดก่อนเวลานั้นจากทุกแหล่ง บันทึกใหม่มีเวลาที่สคริปต์รับ (t) และรหัสเกม (gid) ติดมาด้วย
  * และเครื่องผู้พัฒนาขอบันทึกการเดินของเกมที่ตรงกับผู้ชนะคนหนึ่งได้ เพื่อเล่นซ้ำตรวจผลและการใช้ AI ของเกมช่วยเล่น
  *
+ * รุ่น 7 (16 พ.ย. 2026): หน้าเกมส่งบันทึกการเดินของเกมไปพร้อมผลทุกครั้ง สคริปต์เก็บไว้ในชีต "hof-logs" คู่กับบันทึก
+ * ตั้งทริกเกอร์รายวันให้ฟังก์ชัน nightlyHofCheck ทำงานช่วงเที่ยงคืนถึงตีหนึ่ง (Triggers > Add trigger > nightlyHofCheck >
+ * Time-driven > Day timer > Midnight to 1am และตั้งเขตเวลาของโครงการเป็นกรุงเทพ) ทุกคืนสคริปต์ตรวจบันทึกในชีต "hof"
+ * ที่เข้ามาตั้งแต่ผลแรกที่มีบันทึกการเดินติดมา (ก่อนหน้านั้นหน้าเกมรุ่นใหม่ยังไม่ขึ้น จึงไม่ตรวจอะไร) บันทึกที่ไม่มี
+ * บันทึกการเดินเลย (ทั้งในชีต "hof-logs" และในเกมที่จบของสถิติ) ถูกนำออกไปชีต "hof-flagged" จดในชีต "removed"
+ * ให้ทุกหน้าเกมซ่อน และบัญชีที่ส่งถูกระงับในชีต "blocked" (ส่งผลและความคิดเห็นไม่ได้ และเห็นข้อความ CONFIG.BLOCK_NOTICE)
+ * บันทึกอื่นของบัญชีนั้นในหอออกไปด้วย ช่วง NIGHTLY_GRACE_DAYS วันแรกนำออกอย่างเดียว ไม่ระงับ เพราะหน้าเกมที่เปิดค้าง
+ * ก่อนอัปเดตยังส่งผลโดยไม่มีบันทึกการเดิน บันทึกที่การย้ายเดือนพาไปชีต "hof-archive" ก่อนทริกเกอร์ทำงานถูกตรวจที่นั่น
+ * ครั้งเดียว ปลดระงับได้จากหน้าสถิติบนเครื่องผู้พัฒนา หรือลบแถวในชีต "blocked"
+ *
  * สถิติการเล่น: ชีต "daily" นับจำนวนคนเข้าต่อวัน (เบราว์เซอร์ละครั้งต่อวัน แยกสมาชิกกับผู้มาเยือน ไม่มีรายการการเข้าชม)
  * ชีต "games" เก็บเกมที่เริ่ม จบ หรือออกกลางคัน พร้อมผล การ์ดที่แต่ละรัฐเลือก และบันทึกการเดินของแต่ละเกม
  * สองชีตนี้ไม่มีทางอ่านผ่านที่อยู่สาธารณะ อ่านได้จากหน้าสถิติบนเครื่องผู้พัฒนาเท่านั้น (และจากตัวชีตเองในบัญชีของเจ้าของ)
@@ -44,6 +54,11 @@ const CONFIG = {
   VISITS_PER_DAY: 20000,     // เพดานจำนวนคนเข้าต่อวัน กันตัวนับพองเพราะสแปม
   GAMES_PER_DAY: 3000,       // เพดานเหตุการณ์เกมทั้งเว็บต่อวัน
   TOP_CARDS: 15,             // จำนวนการ์ดยอดนิยมต่อชุดกฎที่หน้าสถิติแสดง
+  // ตรวจหอเกียรติยศทุกคืน (รุ่น 7)
+  NIGHTLY: true,             // false = ทริกเกอร์ทำงานแต่ไม่ตรวจอะไร
+  NIGHTLY_GRACE_DAYS: 2,     // วันแรกหลังรุ่นนี้เริ่มใช้ บันทึกที่ไม่มีบันทึกการเดินถูกนำออกอย่างเดียว ไม่ระงับบัญชี
+  // ข้อความที่บัญชีที่ถูกระงับเห็น ตอนส่งผล ตอนเขียนความคิดเห็น และบนหน้าหอเกียรติยศ
+  BLOCK_NOTICE: 'ระบบตรวจพบว่ามีการใช้ AI และพยายามแทรกแซงระบบ ผลของบัญชีนี้ถูกนำออกจากหอเกียรติยศ และบัญชีถูกระงับจากหอเกียรติยศกับลานความคิดเห็น',
 };
 const SHEET = 'hof';
 const HEAD = ['id', 'ts', 'by', 'score', 'margin', 'json'];
@@ -63,7 +78,7 @@ function doGet(e) {
   if (p.list === 'hof') return out(listCached());
   if (p.list === 'cmt') return out(listComments());
   if (p.list === 'removed') return out(listRemoved());
-  return out({ ok: true, app: 'kirana-federation-hof', v: 6, month: monthStr(Date.now()), count: Math.max(0, sheet().getLastRow() - 1), reset: resetAt() });
+  return out({ ok: true, app: 'kirana-federation-hof', v: 7, month: monthStr(Date.now()), count: Math.max(0, sheet().getLastRow() - 1), reset: resetAt() });
 }
 
 function doPost(e) {
@@ -79,6 +94,8 @@ function doPost(e) {
   if (b.action === 'replay') return out(readReplay(b));
   if (b.action === 'hofLog') return out(readHofLog(b));
   if (b.action === 'reset') return out(resetHof(b));
+  if (b.action === 'me') return out(readMe(b));
+  if (b.action === 'unblock') return out(unblockAcct(b));
   return out({ ok: false, err: 'action' });
 }
 
@@ -118,8 +135,22 @@ function secret() {
 function addRecord(b) {
   const acct = checkTicket(b.session);
   if (!acct) return { ok: false, err: 'session' };
+  // a blocked account sends no more records (version 7)
+  const bl = blockedOf(acct);
+  if (bl) return { ok: false, err: 'blocked', msg: CONFIG.BLOCK_NOTICE, at: bl.at };
   let rec;
   try { rec = cleanRecord(b.rec); } catch (err) { return { ok: false, err: 'record', msg: String(err && err.message || err) }; }
+  // the move log that rides with the record (version 7) must be of this game: its seed, its table and a person's seat
+  // of the winning state
+  let log = '';
+  if (typeof b.log === 'string' && b.log) {
+    log = cleanLog(b.log);
+    let o = null; try { o = log ? JSON.parse(log) : null; } catch (err) { o = null; }
+    if (!logFits(o, rec)) return { ok: false, err: 'record', msg: 'บันทึกการเดินไม่ใช่ของเกมนี้' };
+  }
+  // the first win that comes with its log starts the clock of the nightly check: until the page of version 7 is up, no
+  // record carries a log and nothing is checked, whichever of the page and the script went up first
+  if (log) logRuleFrom(true);
   rec.by = acct; rec.via = 'auto';
   // the record is dated by the script's clock, in Thai time: the month it counts in is the month it arrived; t keeps the
   // moment, so a reset of the hall (version 6) can tell a record made after it from one made earlier the same day
@@ -134,13 +165,17 @@ function addRecord(b) {
     const sh = sheet();
     const rows = sh.getLastRow() > 1 ? sh.getRange(2, 1, sh.getLastRow() - 1, HEAD.length).getValues() : [];
     const key = 'r:' + rec.id;
-    if (rows.some(r => r[0] === key)) return { ok: true, dup: true, rank: rankIn(rows, rec.id), total: rows.length };
+    if (rows.some(r => r[0] === key)) {
+      if (log && !hofLogIds().has(rec.id)) storeHofLog(rec, acct, log);   // a second send that brings the log
+      return { ok: true, dup: true, rank: rankIn(rows, rec.id), total: rows.length };
+    }
     // a win that already stood in the hall of a month before does not come back for the new month
     if (archivedKeys().has(key)) return { ok: true, dup: true, old: true };
     const dayAgo = Date.now() - 864e5;
     if (rows.filter(r => r[2] === 'u:' + acct && +r[1] > dayAgo).length >= CONFIG.MAX_PER_DAY) return { ok: false, err: 'limit' };
     const row = [key, Date.now(), 'u:' + acct, rec.score, rec.margin, JSON.stringify(rec)];
     sh.appendRow(row);
+    if (log) storeHofLog(rec, acct, log);
     CacheService.getScriptCache().remove(listKey());
     rows.push(row);
     return { ok: true, rank: rankIn(rows, rec.id), total: rows.length };
@@ -194,6 +229,8 @@ function cleanRecord(d) {
 function addComment(b) {
   const acct = checkTicket(b.session);
   if (!acct) return { ok: false, err: 'session' };
+  const bl = blockedOf(acct);
+  if (bl) return { ok: false, err: 'blocked', msg: CONFIG.BLOCK_NOTICE, at: bl.at };
   let c;
   try { c = cleanComment(b.cmt); } catch (err) { return { ok: false, err: 'comment', msg: String(err && err.message || err) }; }
   const lock = LockService.getScriptLock();
@@ -548,6 +585,8 @@ function readStats(b) {
     byDay: list,
     recent: recent,
     cards: cards,
+    nightly: { last: nightlyLast(), from: logRuleFrom(),
+      blocked: rowsOf(blockedSheet(), BHEAD.length).map(r => ({ by: String(r[0]), at: +r[1] || 0, reason: String(r[2] || ''), id: String(r[3] || ''), state: String(r[4] || ''), score: +r[5] || 0 })).reverse().slice(0, 100) },
   };
 }
 function readReplay(b) {
@@ -564,33 +603,184 @@ function readReplay(b) {
   }
   return { ok: false, err: 'id' };
 }
-// the move log of the game a hall of fame record came from (version 6), for the developer's audit: by the game id the
-// record carries, else by the finished games of the same rule set and table size whose result holds a human state of
-// that name and score; the log found must be of the record's seed. Newest first; none: err 'nolog'
+// the move log of the game a hall of fame record came from (version 6), for the developer's audit: see findLogFor. None:
+// err 'nolog'. Version 7 also takes the record's id, to find the log that rode with it
 function readHofLog(b) {
   if (checkTicket(b.session) !== 'dev') return { ok: false, err: 'forbidden' };
   const q = b.rec && typeof b.rec === 'object' ? b.rec : {};
-  const gid = idOf(q.gid, 6, 32), seed = Number.isInteger(q.seed) && q.seed >= 0 ? q.seed : -1;
-  const state = str(q.state, 24), score = Number.isInteger(q.score) ? q.score : null, rules = word(q.rules, 8), n = int(q.n, 3, 4);
-  if (seed < 0 || (!gid && (!state || score == null))) return { ok: false, err: 'id' };
-  const sh = gameSheet(), last = sh.getLastRow();
-  if (last < 2) return { ok: false, err: 'nolog' };
-  const rows = sh.getRange(2, 1, last - 1, GCOLS).getValues();
+  const rec = { id: idOf(q.id, 1, 16), gid: idOf(q.gid, 6, 32), seed: Number.isInteger(q.seed) && q.seed >= 0 ? q.seed : -1, state: str(q.state, 24),
+    score: Number.isInteger(q.score) ? q.score : null, rules: word(q.rules, 8), n: int(q.n, 3, 4) };
+  if (rec.seed < 0 || (!rec.id && !rec.gid && (!rec.state || rec.score == null))) return { ok: false, err: 'id' };
+  // loose: the game the record names comes back even when its winning state is not at that table, so the replay on the
+  // developer device can say the record does not match its game (the nightly check counts such a record as one without a log)
+  const f = findLogFor(rec, null, true);
+  return f ? { ok: true, log: f.log, gid: f.gid, ts: f.ts } : { ok: false, err: 'nolog' };
+}
+
+// ---------- every night (version 7, ruled 16 Nov 2026): a record with no move log leaves the hall ----------
+// The page sends the game's move log with every win it puts in the hall; the script keeps it in "hof-logs" beside the
+// record. A daily trigger runs nightlyHofCheck between midnight and one in the morning: a record that came in since the
+// first win came with its log and has no move log anywhere (beside it, or among the finished games of the statistics) leaves the
+// hall for "hof-flagged", the "removed" list hides it on every page, and its account is blocked: no more records, no
+// comments, every other record of it leaves the hall too, and the player reads CONFIG.BLOCK_NOTICE. In the first
+// NIGHTLY_GRACE_DAYS a record without a log only leaves: a page opened before the update sends its win without one.
+// A record that the monthly roll moved to "hof-archive" before the trigger ran is checked there, once.
+// The developer device unblocks an account from the statistics page, or the owner deletes its row in "blocked".
+const LSHEET = 'hof-logs';
+const LHEAD = ['id', 'ts', 'by', 'gid', 'seed', 'loglen', 'log1', 'log2', 'log3', 'log4'];
+const BSHEET = 'blocked';
+const BHEAD = ['by', 'ts', 'reason', 'id', 'state', 'score'];
+const FSHEET = 'hof-flagged';
+const FHEAD = ['ts', 'reason', 'by', 'id', 'json'];
+function hofLogSheet() { return sheetNamed(LSHEET, LHEAD); }
+function blockedSheet() { return sheetNamed(BSHEET, BHEAD); }
+function flaggedSheet() { return sheetNamed(FSHEET, FHEAD); }
+// the moment the first win came with its log (start = set it now if it is not set): a record older than it came
+// without its log and is left alone. 0 = no win has come with its log yet
+function logRuleFrom(start) {
+  const props = PropertiesService.getScriptProperties();
+  let t = +(props.getProperty('LOG_RULE_FROM') || 0) || 0;
+  if (!t && start) { t = Date.now(); props.setProperty('LOG_RULE_FROM', String(t)); }
+  return t;
+}
+// the account's block, if any (the developer device is never blocked)
+function blockedOf(acct) {
+  if (!acct || acct === 'dev') return null;
+  const key = 'u:' + acct;
+  const r = rowsOf(blockedSheet(), BHEAD.length).find(x => x[0] === key);
+  return r ? { at: +r[1] || 0, reason: String(r[2] || '') } : null;
+}
+// a move log belongs to a record when its seed, its rule set, its table size and a person's seat of the record's state
+// all match
+function logFits(o, rec) {
+  if (!o || !o.cfg || typeof o.cfg !== 'object' || !Array.isArray(o.cfg.seats) || !Array.isArray(o.log)) return false;
+  if ((Number(o.cfg.seed) >>> 0) !== rec.seed) return false;
+  if (rec.rules && String(o.cfg.rules || '') !== rec.rules) return false;
+  if (rec.n && o.cfg.seats.length !== rec.n) return false;
+  return o.cfg.seats.some(x => x && x.human === true && str(String(x.name || ''), 24) === rec.state);
+}
+function storeHofLog(rec, acct, log) {
+  const row = [rec.id, Date.now(), 'u:' + acct, rec.gid || '', rec.seed, log.length];
+  for (let i = 0; i < 4; i++) { const part = log.slice(i * LOG_CELL, (i + 1) * LOG_CELL); row.push(part ? '~' + part : ''); }
+  hofLogSheet().appendRow(row);
+}
+function hofLogIds() { return new Set(rowsOf(hofLogSheet(), 1).map(r => String(r[0]))); }
+// the move log of a record's game: the one that rode with the record first, then the finished games of the statistics,
+// by the game id the record carries, else by rule set, table size, a person's state and score. The log must fit the
+// record (loose: a log of the statistics with the record's seed is enough, as in version 6, for the developer's replay).
+// cache: rows read once for a night of many records
+function findLogFor(rec, cache, loose) {
+  cache = cache || {};
+  const ls = hofLogSheet(), lrows = cache.lrows || (cache.lrows = rowsOf(ls, 1));
+  if (rec.id) for (let i = lrows.length - 1; i >= 0; i--) {
+    if (String(lrows[i][0]) !== rec.id) continue;
+    const log = ls.getRange(i + 2, 7, 1, 4).getValues()[0].map(c => String(c || '').replace(/^~/, '')).join('');
+    let o = null; try { o = JSON.parse(log); } catch (err) { /* a cut log */ }
+    if (logFits(o, rec)) return { log: log, gid: String(o.cfg.gid || rec.gid || ''), ts: 0, src: 'hof' };
+  }
+  const gs = gameSheet(), rows = cache.grows || (cache.grows = rowsOf(gs, GCOLS));
   for (let i = rows.length - 1; i >= 0; i--) {
     const r = rows[i];
     if (r[3] !== 'end' || !(+r[17] > 0)) continue;
-    if (gid) { if (String(r[2]) !== gid) continue; }
+    if (rec.gid) { if (String(r[2]) !== rec.gid) continue; }
     else {
-      if ((rules && String(r[9]) !== rules) || (n && +r[10] !== n)) continue;
+      if ((rec.rules && String(r[9]) !== rec.rules) || (rec.n && +r[10] !== rec.n)) continue;
       let res = null; try { res = JSON.parse(r[15] || '{}'); } catch (err) { /* a row edited by hand */ }
-      if (!res || !Array.isArray(res.scores) || !res.scores.some(x => x.human && x.state === state && x.score === score)) continue;
+      if (!res || !Array.isArray(res.scores) || !res.scores.some(x => x.human && x.state === rec.state && x.score === rec.score)) continue;
     }
-    const log = sh.getRange(i + 2, LOG_COL, 1, 4).getValues()[0].map(c => String(c || '').replace(/^~/, '')).join('');
+    const log = gs.getRange(i + 2, LOG_COL, 1, 4).getValues()[0].map(c => String(c || '').replace(/^~/, '')).join('');
     let o = null; try { o = JSON.parse(log); } catch (err) { /* a cut log */ }
-    if (!o || !o.cfg || (Number(o.cfg.seed) >>> 0) !== seed) continue;
-    return { ok: true, log: log, gid: String(r[2]), ts: +r[0] };
+    if (!logFits(o, rec) && !(loose && o && o.cfg && (Number(o.cfg.seed) >>> 0) === rec.seed)) continue;
+    return { log: log, gid: String(r[2]), ts: +r[0], src: 'games' };
   }
-  return { ok: false, err: 'nolog' };
+  return null;
+}
+// the nightly check; a daily trigger calls it (see the head of this file). Returns what it did, and keeps it for the
+// statistics page
+function nightlyHofCheck() {
+  if (CONFIG.NIGHTLY === false) return { ok: true, off: true };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(30000);
+  try {
+    rollHof(true);
+    const now = Date.now(), from = logRuleFrom(), graceEnd = from + CONFIG.NIGHTLY_GRACE_DAYS * 864e5;
+    if (!from) {   // no win has come with its log: the page of this version is not up yet, nothing to check against
+      const wait = { at: now, from: 0, checked: 0, removed: 0, blocked: 0, waiting: true };
+      PropertiesService.getScriptProperties().setProperty('NIGHTLY_LAST', JSON.stringify(wait));
+      return wait;
+    }
+    const sh = sheet(), last = sh.getLastRow();
+    const rows = last > 1 ? sh.getRange(2, 1, last - 1, HEAD.length).getValues().filter(r => r.some(x => x !== '' && x != null)) : [];
+    // the records that the monthly roll (or a reset) moved to "hof-archive" since the last night are checked once where
+    // they lie, or a win sent on the last day of a month would leave the hall at midnight unchecked. They stay in the
+    // archive, which no page reads; one without a log is flagged, hidden on every page and blocks its account the same
+    const prev = nightlyLast(), since = Math.max(from, prev && +prev.at || 0);
+    const ar = SpreadsheetApp.getActiveSpreadsheet().getSheetByName(ASHEET), alast = ar ? ar.getLastRow() : 0;
+    const arch = alast > 1 ? ar.getRange(2, 2, alast - 1, HEAD.length).getValues().filter(r => +r[1] >= since) : [];
+    const cache = {}, drop = new Map(), adrop = new Map(), blocks = new Map();
+    let checked = 0;
+    const check = (r, i, into, tag) => {
+      const t = +r[1], rec = rowRec(r);
+      if (!rec || !rec.id || !(t >= from)) return;
+      checked++;
+      if (findLogFor(rec, cache)) return;
+      // after the grace days the account is blocked too; the developer device never is
+      const by = String(r[2] || ''), late = t >= graceEnd;
+      into.set(i, (late ? 'nolog' : 'nolog-grace') + tag);
+      if (late && /^u:[0-9a-f]{16}$/.test(by) && !blocks.has(by) && !blockedOf(by.slice(2))) blocks.set(by, rec);
+    };
+    rows.forEach((r, i) => check(r, i, drop, ''));
+    arch.forEach((r, i) => check(r, i, adrop, '-archive'));
+    // every other record of an account blocked tonight leaves the hall too
+    for (let i = 0; i < rows.length; i++) if (!drop.has(i) && blocks.has(String(rows[i][2]))) drop.set(i, 'blocked');
+    if (drop.size || adrop.size) {
+      const fl = flaggedSheet(), rs = removedSheet();
+      const gone = new Set(removedRows().filter(x => x[0] === 'hof').map(x => String(x[1])));
+      const flag = (r, reason) => {
+        const rec = rowRec(r) || {};
+        fl.appendRow([now, reason, String(r[2] || ''), rec.id || '', String(r[5] || '')]);
+        if (rec.id && !gone.has(rec.id)) { rs.appendRow(['hof', rec.id, now, 'nightly']); gone.add(rec.id); }
+      };
+      for (const [i, reason] of drop) flag(rows[i], reason);
+      for (const [i, reason] of adrop) flag(arch[i], reason);
+      for (const [by, rec] of blocks) blockedSheet().appendRow([by, now, 'nolog', rec.id, rec.state, rec.score]);
+      if (drop.size) {
+        const keep = rows.filter((r, i) => !drop.has(i));
+        sh.getRange(2, 1, last - 1, HEAD.length).clearContent();
+        if (keep.length) sh.getRange(2, 1, keep.length, HEAD.length).setValues(keep);
+      }
+      const c = CacheService.getScriptCache();
+      [listKey(), 'rlist'].forEach(k => c.remove(k));
+    }
+    const report = { at: now, from: from, checked: checked, removed: drop.size + adrop.size, blocked: blocks.size };
+    PropertiesService.getScriptProperties().setProperty('NIGHTLY_LAST', JSON.stringify(report));
+    return report;
+  } finally { lock.releaseLock(); }
+}
+function nightlyLast() { try { return JSON.parse(PropertiesService.getScriptProperties().getProperty('NIGHTLY_LAST') || 'null'); } catch (err) { return null; } }
+// a signed-in page asks whether its account is blocked
+function readMe(b) {
+  const acct = checkTicket(b.session);
+  if (!acct) return { ok: false, err: 'session' };
+  const bl = blockedOf(acct);
+  return { ok: true, blocked: bl ? { at: bl.at, notice: CONFIG.BLOCK_NOTICE } : null };
+}
+// the developer device lifts a block; the records that left the hall stay in "hof-flagged"
+function unblockAcct(b) {
+  if (checkTicket(b.session) !== 'dev') return { ok: false, err: 'forbidden' };
+  const by = typeof b.by === 'string' && /^u:[0-9a-f]{16}$/.test(b.by) ? b.by : '';
+  if (!by) return { ok: false, err: 'id' };
+  const lock = LockService.getScriptLock();
+  lock.waitLock(15000);
+  try {
+    const sh = blockedSheet(), last = sh.getLastRow();
+    let n = 0;
+    if (last > 1) {
+      const ids = sh.getRange(2, 1, last - 1, 1).getValues();
+      for (let i = ids.length - 1; i >= 0; i--) if (ids[i][0] === by) { sh.deleteRow(i + 2); n++; }
+    }
+    return { ok: true, unblocked: n };
+  } finally { lock.releaseLock(); }
 }
 function dailySheet() { return sheetNamed(DSHEET, DHEAD); }
 function gameSheet() { return sheetNamed(GSHEET, GHEAD); }
