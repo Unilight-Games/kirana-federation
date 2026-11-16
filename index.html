@@ -1026,6 +1026,11 @@ button.au-b:hover { filter: brightness(1.15); }
 .hr-au { margin-top: 3px; }
 .hr-au:empty { display: none; }
 .top .status .pill.assist { color: var(--grav); border-color: rgba(244,207,82,.5); }
+/* a blocked account reads why on the hall of fame and the comment board (version 7 of the script) */
+.hofban { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: rgba(138,58,51,.28); border: 1px solid var(--bad); color: #f6d8d2; }
+.hofban .ic { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--bad); }
+.hofban span { display: grid; gap: 2px; }
+.hofban small { color: #e0b8b0; font-size: 11.5px; }
 /* star rating: optional on a comment, shown only when given */
 .rate { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
 .rate .star { background: none; border: 0; padding: 2px; cursor: pointer; color: #5d5446; line-height: 0; border-radius: 6px; }
@@ -10723,7 +10728,7 @@ function showMenuSettings() {
     <label for="ms-sound">เสียง</label><span><input type="checkbox" id="ms-sound"${settings.sound ? ' checked' : ''}></span>
     <label for="ms-fx">เอฟเฟกต์บนโต๊ะ</label><span><input type="checkbox" id="ms-fx"${settings.fx ? ' checked' : ''}></span>
     <label for="ms-pres">แสดงตัวว่าออนไลน์</label><span><input type="checkbox" id="ms-pres"${settings.presence !== false ? ' checked' : ''}> <span class="tiny muted">ให้ผู้เล่นคนอื่นเห็นว่าท่านเปิดเกมอยู่ (ต้องต่อเครือข่ายเพียร์ทูเพียร์)</span></span>
-    <label for="ms-stats">ส่งสถิติการเล่น</label><span><input type="checkbox" id="ms-stats"${settings.stats !== false && !statsBlocked() ? ' checked' : ''}${statsBlocked() ? ' disabled' : ''}> <span class="tiny muted">${statsBlocked() ? 'เบราว์เซอร์นี้ขอไม่ให้ติดตาม เกมจึงไม่ส่งสถิติ' : `นับคนเข้าวันละครั้ง และส่งเกมที่เล่น ผลเกม และการเดินในเกมให้ผู้พัฒนาใช้ปรับเกม ไม่มีอีเมล <a href="privacy.html#stats" target="_blank" rel="noopener">อ่านเพิ่ม</a>${store.get('vid', '') ? ` · รหัสเบราว์เซอร์นี้ <span class="mono">${esc(store.get('vid', ''))}</span>` : ''}`}</span></span>
+    <label for="ms-stats">ส่งสถิติการเล่น</label><span><input type="checkbox" id="ms-stats"${settings.stats !== false && !statsBlocked() ? ' checked' : ''}${statsBlocked() ? ' disabled' : ''}> <span class="tiny muted">${statsBlocked() ? 'เบราว์เซอร์นี้ขอไม่ให้ติดตาม เกมจึงไม่ส่งสถิติ ส่วนผลที่ขึ้นหอเกียรติยศยังส่งบันทึกการเดินของเกมนั้นไปให้ตรวจ' : `นับคนเข้าวันละครั้ง และส่งเกมที่เล่น ผลเกม และการเดินในเกมให้ผู้พัฒนาใช้ปรับเกม ไม่มีอีเมล ผลที่ขึ้นหอเกียรติยศส่งบันทึกการเดินไปด้วยเสมอ แม้ปิดสถิติ <a href="privacy.html#stats" target="_blank" rel="noopener">อ่านเพิ่ม</a>${store.get('vid', '') ? ` · รหัสเบราว์เซอร์นี้ <span class="mono">${esc(store.get('vid', ''))}</span>` : ''}`}</span></span>
     <label for="ms-scene">ภาพฉากหลัง</label><span><input type="checkbox" id="ms-scene"${settings.scene ? ' checked' : ''}> <span class="tiny muted">ห้องอาลักษณ์ที่เมนู แผนที่คีรันนาใต้โต๊ะ</span></span>
     <label for="ms-speed">ความเร็ว AI</label><span><select id="ms-speed">${[[0, 'ทันที'], [200, 'เร็ว'], [450, 'ปกติ'], [900, 'ช้า']].map(([v, l]) => `<option value="${v}"${settings.speed === v ? ' selected' : ''}>${l}</option>`).join('')}</select></span>
     <label>ข้อมูลในเครื่อง</label><span><button class="btn sm danger" id="ms-wipe"${canSave() ? '' : ' disabled'}>ลบเกมที่บันทึกไว้</button></span>
@@ -10964,28 +10969,32 @@ async function showHallOfFame() {
   const dev = devView();
   if (hofTab === 'hof') {
     // the time of a reset comes first: every source below is read against it
-    const [remote, online] = await Promise.all([fetchRepoJSON('hall-of-fame.json'), hofFetchOnline(), fetchRemoved(), hofFetchReset()]);
-    const list = hofMerge(hofLocal(), remote.concat(online, lobbyRecords()));
+    const [remote, online, , , block] = await Promise.all([fetchRepoJSON('hall-of-fame.json'), hofFetchOnline(), fetchRemoved(), hofFetchReset(), hofFetchMe()]);
+    // with the script online the hall is the script's list, the repository file and this browser's own wins (ruled
+    // 16 Nov): a record that came from peers never went through the script, so its nightly check could not reach it
+    const net = hofOnline(), mine = hofMine();
+    const list = hofMerge(net ? (block ? [] : hofLocal().filter(r => mine.has(r.id))) : hofLocal(), remote.concat(online, net ? [] : lobbyRecords()));
     store.set('hof', list);
     if (!body.isConnected) return;
     const t0 = hofResetAt(), top = list.slice(0, 10);
     body.innerHTML = `<div class="hofmonth">${ICON('crown')}<b>ผู้ชนะประจำเดือน${esc(thMonthName())}</b><span class="tiny muted">หอเกียรติยศเริ่มใหม่ทุกวันที่ 1 เวลา 00:00 น. ตามเวลาไทย${t0 && thMonth(t0) === thMonth() ? ` · เดือนนี้เริ่มนับใหม่เมื่อ ${esc(fmtTime(t0))}` : ''}</span></div>`
-      + (dev ? hofDevBar(top.length) : '') + hofTable(top, dev) + `<p class="tiny muted">รวมผลจากเครื่องนี้${hofOnline() ? ' หอเกียรติยศออนไลน์ (ผู้ชนะที่ลงชื่อเข้าใช้ถูกบันทึกเองตอนจบเกม)' : ''}${repoInfo() ? ' ไฟล์หอเกียรติยศในคลัง GitHub' : ''} และผู้เล่นที่ออนไลน์อยู่ บันทึกเฉพาะเกมที่ผู้ชนะเป็นผู้เล่น (ไม่นับ AI และโหมดสอนเล่น) เกมกับ AI นับเฉพาะโต๊ะ 4 รัฐที่ AI ระดับปกติหรือยาก ผู้ชนะที่เล่นกับ AI ระดับยากเรียงก่อน จากนั้นเรียงตามคะแนนสุทธิ</p>`;
+      + hofBlockHtml(block) + (dev ? hofDevBar(top.length) : '') + hofTable(top, dev) + `<p class="tiny muted">${net ? `รวมผลจากหอเกียรติยศออนไลน์ (ผู้ชนะที่ลงชื่อเข้าใช้ถูกบันทึกเองตอนจบเกม และผลที่ไม่มีบันทึกการเดินถูกนำออกทุกคืน)${repoInfo() ? ' ไฟล์หอเกียรติยศในคลัง GitHub' : ''} และชัยชนะของเครื่องนี้` : `รวมผลจากเครื่องนี้${repoInfo() ? ' ไฟล์หอเกียรติยศในคลัง GitHub' : ''} และผู้เล่นที่ออนไลน์อยู่`} บันทึกเฉพาะเกมที่ผู้ชนะเป็นผู้เล่น (ไม่นับ AI และโหมดสอนเล่น) เกมกับ AI นับเฉพาะโต๊ะ 4 รัฐที่ AI ระดับปกติหรือยาก ผู้ชนะที่เล่นกับ AI ระดับยากเรียงก่อน จากนั้นเรียงตามคะแนนสุทธิ</p>`;
     if (dev) { wireRemove(body, 'hof'); wireHofAudit(body, top); }
   } else {
-    const [remote, online] = await Promise.all([fetchRepoJSON('comments.json'), hofGet('cmt', 200), fetchRemoved()]);
+    const [remote, online, , block] = await Promise.all([fetchRepoJSON('comments.json'), hofGet('cmt', 200), fetchRemoved(), hofFetchMe()]);
     const list = cmtMerge(store.get('comments', []), remote.concat(online, lobbyComments()));
     store.set('comments', list);
     if (!body.isConnected) return;
     // with the online board, writing needs a Google sign-in (or the developer device): the script keeps who wrote what
     const gate = hofOnline() && !acct;
-    body.innerHTML = `${gate ? `<div class="cform cgate"><span>${ICON('chat')} ลงชื่อเข้าใช้ Google เพื่อเขียนความคิดเห็น</span>${acctSlot('inline')}</div>`
+    body.innerHTML = `${block ? hofBlockHtml(block) : gate ? `<div class="cform cgate"><span>${ICON('chat')} ลงชื่อเข้าใช้ Google เพื่อเขียนความคิดเห็น</span>${acctSlot('inline')}</div>`
       : `<form class="cform" id="cm-form"><div class="row">${flagHtml({ flag: profile.flag, color: profile.color }, 'sm')}<b>${esc(fullLeader(profile) || 'ผู้เล่น')}</b><span class="tiny muted">${esc(profile.state && profile.state.th || '')}</span></div>
       <textarea id="cm-text" maxlength="280" rows="3" placeholder="เขียนความคิดเห็นเกี่ยวกับเกม กติกา หรือชวนเพื่อนมาเล่น (ไม่เกิน 280 ตัวอักษร)"></textarea>
       <div class="rate" role="radiogroup" aria-label="ให้ดาวเกมนี้ ไม่ให้ก็ได้"><span class="tiny muted rate-l">ให้ดาว</span>${[1, 2, 3, 4, 5].map(k => `<button type="button" class="star" role="radio" aria-checked="false" aria-label="${k} ดาว" data-star="${k}" tabindex="${k === 1 ? 0 : -1}">${ICON('star')}</button>`).join('')}<span class="tiny muted rate-n" id="cm-stars-n">ไม่ให้ก็ได้</span></div>
       <div class="row"><div class="tiny grow cnote" id="cm-note"></div><button class="btn primary">ส่ง</button></div></form>`}
       ${cmtAvgHtml(list)}<div class="clist">${list.map(c => cmtHtml(c, dev)).join('') || '<p class="muted">ยังไม่มีความคิดเห็น</p>'}</div>`;
     if (dev) wireRemove(body, 'cmt');
+    if (block) return;   // a blocked account reads the board and writes nothing
     if (gate) {
       renderAcctChips();
       acctWaiters.push(() => { if (hofTab === 'cmt' && body.isConnected) showHallOfFame(); });
@@ -11028,6 +11037,13 @@ async function showHallOfFame() {
 let cmtFail = null;
 async function sendComment(c) {
   const j = await cmtSubmit(c);
+  // a blocked account: the comment leaves this browser and the board shows the notice in place of the form
+  if (j && j.err === 'blocked') {
+    store.set('comments', store.get('comments', []).filter(x => x.id !== c.id));
+    if (cmtFail && cmtFail.c.id === c.id) cmtFail = null;
+    if (hofTab === 'cmt' && document.getElementById('hof-body')) showHallOfFame();
+    return;
+  }
   if (j && (j.ok || j.off)) {
     if (cmtFail && cmtFail.c.id === c.id) cmtFail = null;
     // the board dates the comment and tags its author; this browser keeps the board's copy so both read the same
@@ -13520,7 +13536,14 @@ function validRecord(r) {
     && (r.gid == null || (typeof r.gid === 'string' && /^[a-z0-9]{6,32}$/.test(r.gid)))
     && hofOk(r);
 }
-function hofAdd(rec) { store.set('hof', hofMerge(hofLocal(), [rec])); }
+// a win of this browser: kept here and named in 'hofMine', so that with the script online the hall still shows it
+// beside the script's list while it is on its way, and shows no record that came from peers
+function hofAdd(rec) {
+  store.set('hof', hofMerge(hofLocal(), [rec]));
+  const m = store.get('hofMine', []);
+  store.set('hofMine', (Array.isArray(m) ? m.filter(x => x !== rec.id && typeof x === 'string') : []).concat(rec.id).slice(-200));
+}
+function hofMine() { const m = store.get('hofMine', []); return new Set(Array.isArray(m) ? m : []); }
 
 function showEnd() {
   if (!G || !G.over) return;
@@ -13534,7 +13557,13 @@ function showEnd() {
   if (win.human && isMine(win) && S.mode !== 'tutorial' && S.mode !== 'watch' && !assisted) {
     const r0 = hofRecord(G, win);
     // a win against the easy AI, or against AI at a table of 3, stays out of the hall (the setup says so beforehand)
-    if (hofOk(r0)) { rec = r0; if (canSave()) { hofAdd(rec); if (S.net && S.net.shareRecord) S.net.shareRecord(rec); } else held = true; }
+    if (hofOk(r0)) {
+      rec = r0;
+      // the game's move log goes with the record to the online hall (version 7 of the script): kept now, while the game
+      // is here, for a send that may wait for a sign-in or a retry
+      if (hofOnline()) { const lg = statsLog(); if (lg.length < 175000) hofLogs.set(rec.id, lg); }
+      if (canSave()) { hofAdd(rec); if (S.net && S.net.shareRecord) S.net.shareRecord(rec); } else held = true;
+    }
   }
   const podium = sc.map((x, i) => {
     const ps = playstyle(x.P);
@@ -13672,6 +13701,9 @@ async function hofSignIn(cred) {
   } catch (e) { /* offline or not set up: the record waits in this browser */ }
   return null;
 }
+// the move log of each win this page sends (version 7 of the script): the record id -> the log, kept from the end of the
+// game until the record is in. The nightly check takes out a record that came without its log
+const hofLogs = new Map();
 // send one record; the answer says where it stands, or what is missing
 async function hofSubmit(rec) {
   if (!hofOnline()) return { off: true };
@@ -13679,8 +13711,10 @@ async function hofSubmit(rec) {
   const s = hofTicket();
   if (!s) return { need: 'auth' };
   try {
-    const j = await hofCall({ action: 'hof', session: s.t, rec });
+    const j = await hofCall({ action: 'hof', session: s.t, rec, log: hofLogs.get(rec.id) || '', pv: 7 });
     if (j && j.err === 'session') store.del(acctKey('hofSession'));
+    if (j && j.err === 'blocked') hofSetBlock({ at: j.at, notice: j.msg });
+    if (j && j.ok) hofLogs.delete(rec.id);
     return j || { err: 'empty' };
   } catch (e) { return { err: 'net' }; }
 }
@@ -13742,10 +13776,26 @@ async function cmtSubmit(c) {
   try {
     const j = await hofCall({ action: 'cmt', session: s.t, cmt: c });
     if (j && j.err === 'session') store.del(acctKey('hofSession'));
+    if (j && j.err === 'blocked') hofSetBlock({ at: j.at, notice: j.msg });
     return j || { err: 'empty' };
   } catch (e) { return { err: 'net' }; }
 }
-const HOF_ERR = { session: 'ตั๋วยืนยันตัวตนหมดอายุ', record: 'ข้อมูลบันทึกไม่ผ่านการตรวจ', limit: 'บัญชีนี้ส่งครบ 20 บันทึกในวันนี้แล้ว', net: 'ติดต่อหอเกียรติยศออนไลน์ไม่ได้', empty: 'หอเกียรติยศออนไลน์ไม่ตอบ',
+// the block of this account as the script last told it (version 7): {at, notice}, kept per account
+function hofBlockOf() { const b = acct ? store.get(acctKey('hofBlock'), null) : null; return b && typeof b.notice === 'string' && b.notice ? b : null; }
+function hofSetBlock(b) {
+  if (!acct) return;
+  if (b && typeof b.notice === 'string' && b.notice) store.set(acctKey('hofBlock'), { at: +b.at || 0, notice: b.notice.slice(0, 400) });
+  else store.del(acctKey('hofBlock'));
+}
+// a signed-in page asks the script whether its account is blocked; offline, the last answer stands
+async function hofFetchMe() {
+  if (!hofOnline() || !acct || acct.kind === 'dev') return hofBlockOf();
+  const s = hofTicket(); if (!s) return hofBlockOf();
+  try { const j = await hofCall({ action: 'me', session: s.t }, 10000); if (j && j.ok) hofSetBlock(j.blocked); } catch (e) { /* offline */ }
+  return hofBlockOf();
+}
+const hofBlockHtml = b => b ? `<div class="hofban">${ICON('x')}<span><b>${esc(b.notice)}</b>${b.at ? `<small>ตั้งแต่ ${esc(fmtTime(b.at))}</small>` : ''}</span></div>` : '';
+const HOF_ERR = { blocked: 'บัญชีนี้ถูกระงับจากหอเกียรติยศ', session: 'ตั๋วยืนยันตัวตนหมดอายุ', record: 'ข้อมูลบันทึกไม่ผ่านการตรวจ', limit: 'บัญชีนี้ส่งครบ 20 บันทึกในวันนี้แล้ว', net: 'ติดต่อหอเกียรติยศออนไลน์ไม่ได้', empty: 'หอเกียรติยศออนไลน์ไม่ตอบ',
   comment: 'ความคิดเห็นไม่ผ่านการตรวจ', forbidden: 'ลบได้เฉพาะเครื่องผู้พัฒนา', id: 'รหัสรายการไม่ถูกต้อง' };
 const CMT_LIMIT = 'บัญชีนี้ส่งครบ 30 ความคิดเห็นในวันนี้แล้ว';
 // the end screen line for a win: sends at once, says the rank, offers a retry or a fresh sign-in
@@ -13757,6 +13807,8 @@ async function hofAutoNote(el, rec, gh) {
   const j = await hofSubmit(rec);
   if (!el.isConnected) return;
   if (j && j.ok) return;
+  // a blocked account: the notice, and no way around it
+  if (j && j.err === 'blocked') { el.innerHTML = `${ICON('x')} ${esc(j.msg || HOF_ERR.blocked)}`; return; }
   if (j && j.need === 'auth') {
     el.innerHTML = `${ICON('star')} ยืนยันตัวตนกับ Google อีกครั้งเพื่อส่งผลนี้ขึ้นหอเกียรติยศออนไลน์ <span class="gbtn" data-gbtn="1"></span>`;
     wireAcct(el);
@@ -13916,13 +13968,15 @@ async function showStats() {
         ${j.byDay.slice().reverse().map(d => `<tr><td>${fmtDay(d.day)}</td><td class="num"><b>${d.visitors}</b></td><td class="num">${d.members}</td><td class="num">${d.guests}</td><td class="num">${d.starts}</td><td class="num">${d.ends}</td><td class="num">${d.quits}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">ยังไม่มีคนเข้า</td></tr>'}</table></div></div>
     </div>
     ${statsCardsHtml(j.cards || {})}
+    ${auditNightlyHtml(j.nightly)}
     ${auditBoxHtml()}
     <h3>เกมล่าสุด</h3><div class="table-wrap"><table class="tbl st-recent"><tr><th>เวลา</th><th>ผู้เล่น</th><th>โหมด</th><th>ชุดกฎ</th><th>เหตุการณ์</th><th class="num">รอบ</th><th class="num">นาที</th><th>ผล</th><th></th></tr>
       ${j.recent.map(r => `<tr><td class="nowrap">${esc(fmtTime(r.ts))}</td><td>${statsWho(r)}</td><td>${esc(MODE_TH[r.mode] || r.mode)} ${r.n} รัฐ${r.level && LEVEL_TH[r.level] ? ` · AI ${LEVEL_TH[r.level]}` : ''}</td><td>${esc(r.rules)}</td>
         <td>${esc(EV_TH[r.ev] || r.ev)}${r.ev === 'end' && r.result ? (r.result.won ? ' · <b class="good">ชนะ</b>' : r.result.rank ? ` · อันดับ ${r.result.rank}` : '') : ''}</td><td class="num">${r.round || ''}</td><td class="num">${r.minutes || ''}</td>
-        <td class="small">${scoreLine(r.result)}</td><td class="st-act">${r.log ? `<button class="btn sm" data-replay="${esc(r.gid)}" data-ts="${r.ts}">ดูเกม</button><span class="au-slot" data-auslot="${esc(r.gid + ':' + r.ts)}"><button class="btn sm ghost" data-audit="${esc(r.gid + ':' + r.ts)}">ตรวจ AI</button></span>` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">ยังไม่มีเกม</td></tr>'}</table></div>`;
+        <td class="small">${scoreLine(r.result)}</td><td class="st-act">${r.log ? `<button class="btn sm" data-replay="${esc(r.gid)}" data-ts="${r.ts}">ดูเกม</button>${statsWinner(r) ? `<span class="au-slot" data-auslot="${esc(r.gid + ':' + r.ts)}"><button class="btn sm ghost" data-audit="${esc(r.gid + ':' + r.ts)}">ตรวจ AI</button></span>` : ''}` : ''}</td></tr>`).join('') || '<tr><td colspan="9" class="muted">ยังไม่มีเกม</td></tr>'}</table></div>`;
   body.querySelectorAll('[data-replay]').forEach(b => b.onclick = () => statsReplay(b.dataset.replay, +b.dataset.ts, b));
   wireAudit(body, j.recent);
+  wireNightly(body);
 }
 // the cards each patch's games used most: research and military, players and AI apart
 function statsCardsHtml(cards) {
@@ -13961,13 +14015,14 @@ function statsReplayStop() {
 // player who followed the AI helper. An AI outside the game (a chatbot) does not show here. The audit reads only what
 // the statistics already keep, with no timing and no tab switches, and it shows on the developer's pages only: no
 // public page names anyone. A hall of fame record is also checked against its game: the replay must end with the
-// winner and the score the record claims.
+// winner and the score the record claims. Only winners are checked (ruled 15 Nov): the games a person won, and in each
+// of them the winning seat alone; a game the AI won or a game left midway is not read at all.
 // =====================================================================
 const AUDIT_MIN = 40;   // fewer real choices than this says nothing about a player
 const auditFlagAt = () => { const v = Math.round(+store.get('auditFlag', 90)); return v >= 50 && v <= 100 ? v : 90; };
 const AUDIT_KIND = { turn: 'แอคชันในเทิร์น', workers: 'วางแรงงาน', build: 'สร้างโครงการ', commerce: 'ค้าขาย', command: 'บัญชาการทัพ', researchPick: 'เลือกการ์ดวิจัย',
   milPick: 'เลือกการ์ดทหาร', milRemove: 'ทิ้งการ์ดทหาร', current: 'ขยับกระแส', hire: 'รับแรงงาน', annex: 'ผนวกดินแดน', regimeChoice: 'เลือกระบอบ', dipShuffle: 'สับกองพักกลับ' };
-const AUDIT_ERR = { nolog: 'ไม่มีบันทึกการเดิน', id: 'ไม่พบเกมนี้ในชีต', log: 'บันทึกไม่ครบ', rules: 'ชุดกฎของเกมนี้ไม่มีในหน้านี้แล้ว', engine: 'เล่นซ้ำไม่สำเร็จ',
+const AUDIT_ERR = { winner: 'รัฐผู้ชนะไม่อยู่ในบันทึกการเดินของเกมนี้', nolog: 'ไม่มีบันทึกการเดิน', id: 'ไม่พบเกมนี้ในชีต', log: 'บันทึกไม่ครบ', rules: 'ชุดกฎของเกมนี้ไม่มีในหน้านี้แล้ว', engine: 'เล่นซ้ำไม่สำเร็จ',
   offline: 'หน้านี้ยังไม่ได้ต่อสคริปต์หอเกียรติยศ', stopped: 'หยุดกลางทางเพราะออกจากหน้านี้', confirm: 'สคริปต์ไม่ได้รับคำยืนยัน',
   action: 'สคริปต์ที่ตั้งไว้เป็นรุ่นก่อนรุ่น 6 วางโค้ดใหม่จาก scripts/hof-apps-script.gs แล้ว Deploy เป็น New version' };
 const auditErrText = e => AUDIT_ERR[e] || STATS_ERR[e] || 'ไม่ทราบสาเหตุ';
@@ -14016,22 +14071,27 @@ const AUDIT_STOP = 'audit-stop', AUDIT_ABORT = 'audit-abort';
 // and never beside a game on the table: replays wait in line, and a replay stops at its next pause once the page
 // starts a game or leaves the page that asked for it (the game token moves), before the engine takes another step.
 let auditQueue = Promise.resolve();
-function auditGame(rec) {
+// o.only: the name of the state to judge (the winner); the other seats are replayed and never judged
+function auditGame(rec, o) {
   const tok = token;
-  const p = auditQueue.then(() => auditGameNow(rec, tok));
+  const p = auditQueue.then(() => auditGameNow(rec, tok, o || {}));
   auditQueue = p.catch(() => {});
   return p;
 }
 // rec = the move log {v, cfg, log: [[ask, answer]], takeover}. The game runs again as the save and the replay rebuild
 // it: AI seats and seats the AI took over decide with the game's own random stream, every other answer comes from the
 // log with its controls. Asks are numbered over every seat, as the live game numbered them.
-async function auditGameNow(rec, tok) {
+async function auditGameNow(rec, tok, o) {
   if (G || token !== tok) return { ok: false, err: 'stopped' };
   const cfg = rec && rec.cfg;
   if (!cfg || !Array.isArray(cfg.seats) || !cfg.seats.length || !Array.isArray(rec.log)) return { ok: false, err: 'log' };
   const rs = RULESETS[cfg.rules];
   if (!rs || !rs.data()) return { ok: false, err: 'rules' };
   const seats = cfg.seats.map(s => ({ name: s.name, human: !!s.human, style: s.style || 'balanced', level: s.human ? 'normal' : (AI.LEVELS[s.level] ? s.level : 'normal'), color: s.color }));
+  // the seats judged: the person named by o.only, else every person at the table
+  const only = typeof o.only === 'string' ? o.only : '';
+  const judge = seats.map(s => s.human && (!only || String(s.name).slice(0, 24) === only));
+  if (only && !judge.some(Boolean)) return { ok: false, err: 'winner' };
   const log = new Map(rec.log.map(([k, e]) => [+k, e]));
   const take = JSON.parse(JSON.stringify(rec.takeover || {}));
   const per = seats.map(() => ({ n: 0, m: 0, kinds: {} }));
@@ -14047,7 +14107,7 @@ async function auditGameNow(rec, tok) {
       else {
         if (!log.has(k)) { stopped = true; throw new Error(AUDIT_STOP); }   // the log ends here: the game was left
         const e = log.get(k); used++;
-        const real = auditChoices(req) > 1;
+        const real = judge[P.id] && auditChoices(req) > 1;
         const hint = real ? auditHint(g, P, req, k) : undefined;
         if (e && Array.isArray(e.c)) for (const c of e.c) {
           if (c.reclaim != null && take[c.reclaim] && take[c.reclaim].to == null) take[c.reclaim].to = k;
@@ -14071,7 +14131,7 @@ async function auditGameNow(rec, tok) {
   }
   const ended = !!G2.over && !stopped;
   return { ok: true, ended, round: G2.round, asks: seq, unused: log.size - used, assist: !!cfg.assist, mode: cfg.mode, rules: cfg.rules, seed: G2.seed,
-    seats: seats.map((s, i) => ({ pid: i, state: String(s.name).slice(0, 24), human: s.human, n: per[i].n, m: per[i].m, kinds: per[i].kinds })).filter(s => s.human),
+    seats: seats.map((s, i) => ({ pid: i, state: String(s.name).slice(0, 24), human: s.human, n: per[i].n, m: per[i].m, kinds: per[i].kinds })).filter(s => judge[s.pid]),
     final: ended ? K.finalScores(G2).map(x => ({ state: String(x.P.name).slice(0, 24), score: x.score, human: !!x.P.human })) : [] };
 }
 // the replay must end where the report says: every state's final score (a statistics report), or the winner and the
@@ -14100,13 +14160,14 @@ function auditVerdict(s, assist) {
 function auditBadge(res, o) {
   o = o || {};
   if (!res) return '';
+  if (!res.ok && res.err === 'winner') return `<span class="au-b au-bad" title="${esc(auditErrText('winner'))}">ผลไม่ตรง</span>`;
   if (!res.ok) return `<span class="au-b au-err" title="${esc(res.msg || '')}">ตรวจไม่ได้: ${esc(auditErrText(res.err))}</span>`;
   if (o.match === false) return `<button type="button" class="au-b au-bad" data-aud="${esc(o.key)}">ผลไม่ตรง</button>`;
   const seats = o.state ? res.seats.filter(s => s.state === o.state) : res.seats;
   if (!seats.length) return `<button type="button" class="au-b au-bad" data-aud="${esc(o.key)}">ผลไม่ตรง</button>`;
   return seats.map(s => { const v = auditVerdict(s, res.assist); return `<button type="button" class="au-b ${v.cls}" data-aud="${esc(o.key)}">${seats.length > 1 || o.names ? esc(s.state) + ' · ' : ''}${esc(v.txt)}${res.assist ? ' · เปิดผู้ช่วย AI' : ''}</button>`; }).join(' ');
 }
-// the full reading of one game, in a dialog: every human seat, its kinds of decision, and whether the replay ended as reported
+// the full reading of one game, in a dialog: the winning seat, its kinds of decision, and whether the replay ended as reported
 function auditDetail(res, meta) {
   meta = meta || {};
   const flag = auditFlagAt();
@@ -14116,7 +14177,7 @@ function auditDetail(res, meta) {
     const kinds = Object.entries(s.kinds).sort((a, b) => b[1].n - a[1].n);
     const main = kinds.filter(([k, x]) => AUDIT_KIND[k] && x.n >= 3), rest = kinds.filter(x => !main.includes(x));
     const other = rest.reduce((t, [, x]) => ({ n: t.n + x.n, m: t.m + x.m }), { n: 0, m: 0 });
-    return `<div class="au-seat"><h3>${esc(s.state)}${meta.me === s.state ? ' <span class="tiny muted">ผู้รายงาน</span>' : ''}${meta.winner === s.state ? ' <span class="tiny muted">ผู้ชนะในหอเกียรติยศ</span>' : ''} <span class="au-b ${v.cls}">${esc(v.txt)}</span></h3>
+    return `<div class="au-seat"><h3>${esc(s.state)}${meta.me === s.state ? ' <span class="tiny muted">ผู้รายงาน</span>' : ''}${meta.winner === s.state ? ' <span class="tiny muted">ผู้ชนะในหอเกียรติยศ</span>' : meta.won === s.state ? ' <span class="tiny muted">ผู้ชนะ</span>' : ''} <span class="au-b ${v.cls}">${esc(v.txt)}</span></h3>
       <table class="tbl"><tr><th>การตัดสินใจ</th><th class="num">ครั้ง</th><th class="num">ตรงกับ AI</th><th class="num">%</th></tr>
       ${main.map(([k, x]) => row(AUDIT_KIND[k], x)).join('')}${other.n ? row('อื่น ๆ', other) : ''}${row('รวม', s, 'au-tot')}</table></div>`;
   };
@@ -14130,34 +14191,44 @@ function auditDetail(res, meta) {
       <p class="tiny muted">ธงขึ้นเมื่อตรงกับ AI ตั้งแต่ ${flag}% และตัดสินใจจริงอย่างน้อย ${AUDIT_MIN} ครั้ง นับเฉพาะคำถามที่มีทางเลือกมากกว่าหนึ่งทาง เทียบกับคำแนะนำแบบโหมดสอนเล่น (สไตล์สมดุล ระดับปกติ)
         อ้างอิงจากการทดลอง 15 พ.ย. (แบบละ 8 เกม เกมละราว 110 การตัดสินใจจริง): เล่นตามคำแนะนำตรง 100% AI ของเกมสไตล์ต่าง ๆ เล่นเองตรง 92 ถึง 97% ผู้เล่นที่สุ่มเลือกตรงราว 25% ผลนี้เป็นสัญญาณให้เปิดดูเกมต่อ ผู้เล่นเก่งที่คิดแบบเดียวกับ AI ก็ตรงสูงได้เช่นกัน</p>`
       : `<p class="bad">${ICON('x')} ตรวจไม่ได้: ${esc(auditErrText(res.err))}</p>${res.msg ? `<pre class="tiny">${esc(res.msg)}</pre>` : ''}`}
-    <div class="mfoot">${meta.gid ? '<button class="btn" id="au-watch">ดูเกม</button>' : ''}<span class="grow"></span><button class="btn primary" id="au-close">ปิด</button></div>`, 'wide');
+    <div class="mfoot">${res.log || meta.gid ? '<button class="btn" id="au-watch">ดูเกม</button>' : ''}<span class="grow"></span><button class="btn primary" id="au-close">ปิด</button></div>`, 'wide');
   box.querySelector('#au-close').onclick = closeDialog2;
-  const w = box.querySelector('#au-watch'); if (w) w.onclick = () => { closeDialog2(); statsReplay(meta.gid, meta.ts || 0, null); };
+  // watching replays the log the reading came from (a log that rode with a record has no row in the statistics)
+  const w = box.querySelector('#au-watch');
+  if (w) w.onclick = () => {
+    closeDialog2();
+    const L = res.log;
+    if (L && L.cfg && Array.isArray(L.log)) startGame(Object.assign({}, L.cfg, { mode: 'watch' }), { replay: L.log, takeover: L.takeover || {}, devReplay: true });
+    else statsReplay(meta.gid, meta.ts || 0, null);
+  };
 }
 
-// ---------- the statistics page: one game, or every finished game in the list ----------
+// ---------- the statistics page: one game a person won, or every such game in the list ----------
 const auditMemo = new Map();   // results of this visit, by game id and report time (or by hall of fame record)
+// the state that won a reported game, when a person won it ('' for a game the AI won or one left midway); the result
+// lists the states in the order they finished, whoever sent the report
+const statsWinner = r => { const sc = r && r.ev === 'end' && r.result && Array.isArray(r.result.scores) ? r.result.scores : null; return sc && sc[0] && sc[0].human ? String(sc[0].state || '') : ''; };
 async function auditStatsRow(r) {
   const key = r.gid + ':' + r.ts;
   if (auditMemo.has(key)) return auditMemo.get(key);
   const j = await statsCall({ action: 'replay', gid: r.gid, ts: r.ts });
   if (!j || !j.ok) return { ok: false, err: (j && j.err) || 'empty' };   // a failed call is not kept: press again
   let rec = null; try { rec = JSON.parse(j.log); } catch (e) { rec = null; }
-  const res = await auditGame(rec);
-  if (res.ok) res.match = auditMatchReport(res, r.result && r.result.scores);
+  const res = await auditGame(rec, { only: statsWinner(r) });
+  if (res.ok) { res.match = auditMatchReport(res, r.result && r.result.scores); res.log = rec; }
   if (res.err !== 'stopped') auditMemo.set(key, res);
   return res;
 }
 const auditRowMeta = (r, res) => ({ gid: r.gid, ts: r.ts, when: fmtTime(r.ts), who: statsWho(r), me: ((r.result && r.result.scores) || []).filter(s => s.me).map(s => s.state)[0] || '',
-  match: res && res.match, title: ((r.result && r.result.scores) || []).filter(s => s.me).map(s => s.state)[0] || '' });
+  match: res && res.match, title: statsWinner(r), won: statsWinner(r) });
 // the box above the list of recent games
 function auditBoxHtml() {
   return `<h3>ตรวจการใช้ AI ช่วยเล่น</h3><div class="au-box">
-    <p class="tiny muted">เล่นแต่ละเกมซ้ำจากบันทึกการเดิน แล้วเทียบทุกการตัดสินใจที่มีทางเลือกมากกว่าหนึ่งทางกับคำแนะนำของ AI ในเกม (แบบเดียวกับโหมดสอนเล่น)
-      ผู้เล่นที่ตรงกับ AI เกือบทุกครั้งคือคนที่เล่นตาม AI ของเกม เช่นเปิดเล่นอัตโนมัติจากคอนโซล ผลนี้เป็นสัญญาณให้เปิดดูเกมต่อ ผู้เล่นเก่งที่คิดแบบเดียวกับ AI ก็ตรงสูงได้เช่นกัน
-      และ AI ภายนอกเกมอย่างแชตบอตตรวจด้วยวิธีนี้ไม่ได้ ไม่มีหน้าสาธารณะใดแสดงผลนี้</p>
+    <p class="tiny muted">ตรวจเฉพาะผู้ชนะ: เล่นเกมที่ผู้เล่นชนะซ้ำจากบันทึกการเดิน แล้วเทียบทุกการตัดสินใจของผู้ชนะที่มีทางเลือกมากกว่าหนึ่งทางกับคำแนะนำของ AI ในเกม (แบบเดียวกับโหมดสอนเล่น)
+      เกมที่ AI ชนะ เกมที่ออกกลางคัน และผู้เล่นคนอื่นที่โต๊ะไม่ถูกตรวจ ผู้ชนะที่ตรงกับ AI เกือบทุกครั้งคือคนที่เล่นตาม AI ของเกม เช่นเปิดเล่นอัตโนมัติจากคอนโซล
+      ผลนี้เป็นสัญญาณให้เปิดดูเกมต่อ ผู้เล่นเก่งที่คิดแบบเดียวกับ AI ก็ตรงสูงได้เช่นกัน และ AI ภายนอกเกมอย่างแชตบอตตรวจด้วยวิธีนี้ไม่ได้ ไม่มีหน้าสาธารณะใดแสดงผลนี้</p>
     <div class="row au-ctl"><label for="au-flag">ธงที่</label><input type="number" id="au-flag" min="50" max="100" step="1" value="${auditFlagAt()}"><span>% ขึ้นไป</span>
-      <span class="tiny muted">นับเฉพาะผู้เล่นที่ตัดสินใจจริงตั้งแต่ ${AUDIT_MIN} ครั้ง</span><span class="grow"></span><button class="btn sm" id="au-all">${ICON('eye')} ตรวจทุกเกมที่จบ</button></div>
+      <span class="tiny muted">นับเฉพาะผู้ชนะที่ตัดสินใจจริงตั้งแต่ ${AUDIT_MIN} ครั้ง</span><span class="grow"></span><button class="btn sm" id="au-all">${ICON('eye')} ตรวจทุกเกมที่ผู้เล่นชนะ</button></div>
     <div id="au-out"></div></div>`;
 }
 let auditRun = null, auditLast = null;
@@ -14195,9 +14266,9 @@ function wireAudit(root, recent) {
   all.onclick = async () => {
     if (auditRun) { auditRun.stop = true; return; }   // pressing again stops the round
     const seen = new Set(), todo = [];
-    // one report per game (an online game is reported by each of its players), finished games of players only
-    for (const r of recent) if (r.ev === 'end' && r.log && r.mode !== 'tutorial' && r.who !== 'dev' && !seen.has(r.gid)) { seen.add(r.gid); todo.push(r); }
-    if (!todo.length) { out.innerHTML = '<p class="muted small">ยังไม่มีเกมที่เล่นจบพร้อมบันทึกการเดินในรายการนี้</p>'; return; }
+    // one report per game (an online game is reported by each of its players), games a person won, players only
+    for (const r of recent) if (statsWinner(r) && r.log && r.mode !== 'tutorial' && r.who !== 'dev' && !seen.has(r.gid)) { seen.add(r.gid); todo.push(r); }
+    if (!todo.length) { out.innerHTML = '<p class="muted small">ยังไม่มีเกมที่ผู้เล่นชนะพร้อมบันทึกการเดินในรายการนี้</p>'; return; }
     const run = auditRun = { stop: false };
     all.innerHTML = `${ICON('x')} หยุด`;
     const rows = [];
@@ -14210,16 +14281,16 @@ function wireAudit(root, recent) {
     auditRun = null;
     auditLast = { rows, stopped: run.stop };
     if (!out.isConnected) return;
-    all.innerHTML = `${ICON('eye')} ตรวจทุกเกมที่จบ`;
+    all.innerHTML = `${ICON('eye')} ตรวจทุกเกมที่ผู้เล่นชนะ`;
     out.innerHTML = auditSummaryHtml(rows, run.stop);
   };
 }
-// the round's summary: how the players spread, then the flags, the results that do not match and the games with the helper on
+// the round's summary: how the winners spread, then the flags, the results that do not match and the games with the helper on
 function auditSummaryHtml(rows, stopped) {
   const flag = auditFlagAt();
   const seats = [], bad = [], helper = [], errs = [];
   for (const { r, res } of rows) {
-    if (!res.ok) { errs.push({ r, res }); continue; }
+    if (!res.ok) { (res.err === 'winner' ? bad : errs).push({ r, res }); continue; }
     if (res.match === false || !auditFits(res)) bad.push({ r, res });
     for (const s of res.seats) (res.assist ? helper : seats).push({ r, res, s });
   }
@@ -14229,14 +14300,35 @@ function auditSummaryHtml(rows, stopped) {
   const top = Math.max(1, ...bins);
   const sorted = judged.map(x => auditPct(x.s)).sort((a, b) => a - b);
   const median = sorted.length ? sorted[Math.floor((sorted.length - 1) / 2)] : 0;
-  const line = (x, extra) => `<tr><td class="nowrap">${esc(fmtTime(x.r.ts))}</td><td>${statsWho(x.r)}</td><td>${esc(x.s ? x.s.state : '')}</td><td class="num">${x.s ? x.s.n : ''}</td>
+  const line = (x, extra) => `<tr><td class="nowrap">${esc(fmtTime(x.r.ts))}</td><td>${statsWho(x.r)}</td><td>${esc(x.s ? x.s.state : statsWinner(x.r))}</td><td class="num">${x.s ? x.s.n : ''}</td>
     <td>${extra}</td><td><button type="button" class="btn sm ghost" data-aud="${esc(x.r.gid + ':' + x.r.ts)}">รายละเอียด</button></td></tr>`;
-  const head = '<tr><th>เวลา</th><th>ผู้รายงาน</th><th>รัฐ</th><th class="num">ตัดสินใจจริง</th><th>ผล</th><th></th></tr>';
-  return `<p class="small">ตรวจ ${rows.length} เกม${stopped ? ' (หยุดก่อนครบ)' : ''} · ผู้เล่นที่ตัดสินได้ ${judged.length} คน-เกม · ค่ากลางตรงกับ AI ${median}%${errs.length ? ` · ตรวจไม่ได้ ${errs.length} เกม` : ''}</p>
-    ${judged.length ? `<div class="au-hist" role="img" aria-label="การกระจายของผู้เล่นตามร้อยละที่ตรงกับ AI">${bins.map((c, i) => `<div class="${(i === 9 ? 100 : i * 10 + 9) >= flag ? 'hi' : ''}"><span>${i * 10}-${i === 9 ? 100 : i * 10 + 9}%</span><i style="width:${Math.round(100 * c / top)}%"></i><b>${c}</b></div>`).join('')}</div>` : ''}
-    <h4>ถึงเกณฑ์ธง (${flag}% ขึ้นไป)</h4>${flagged.length ? `<div class="table-wrap"><table class="tbl">${head}${flagged.map(x => line(x, `<span class="au-b au-flag">ตรงกับ AI ${auditPct(x.s)}%</span>`)).join('')}</table></div>` : '<p class="muted small">ไม่มีผู้เล่นถึงเกณฑ์</p>'}
-    ${bad.length ? `<h4>ผลไม่ตรงกับที่รายงาน</h4><div class="table-wrap"><table class="tbl">${head}${bad.map(x => line(Object.assign({ s: x.res.seats[0] }, x), '<span class="au-b au-bad">ผลไม่ตรง</span>')).join('')}</table></div>` : ''}
+  const head = '<tr><th>เวลา</th><th>ผู้รายงาน</th><th>รัฐผู้ชนะ</th><th class="num">ตัดสินใจจริง</th><th>ผล</th><th></th></tr>';
+  return `<p class="small">ตรวจ ${rows.length} เกมที่ผู้เล่นชนะ${stopped ? ' (หยุดก่อนครบ)' : ''} · ผู้ชนะที่ตัดสินได้ ${judged.length} คน · ค่ากลางตรงกับ AI ${median}%${errs.length ? ` · ตรวจไม่ได้ ${errs.length} เกม` : ''}</p>
+    ${judged.length ? `<div class="au-hist" role="img" aria-label="การกระจายของผู้ชนะตามร้อยละที่ตรงกับ AI">${bins.map((c, i) => `<div class="${(i === 9 ? 100 : i * 10 + 9) >= flag ? 'hi' : ''}"><span>${i * 10}-${i === 9 ? 100 : i * 10 + 9}%</span><i style="width:${Math.round(100 * c / top)}%"></i><b>${c}</b></div>`).join('')}</div>` : ''}
+    <h4>ถึงเกณฑ์ธง (${flag}% ขึ้นไป)</h4>${flagged.length ? `<div class="table-wrap"><table class="tbl">${head}${flagged.map(x => line(x, `<span class="au-b au-flag">ตรงกับ AI ${auditPct(x.s)}%</span>`)).join('')}</table></div>` : '<p class="muted small">ไม่มีผู้ชนะถึงเกณฑ์</p>'}
+    ${bad.length ? `<h4>ผลไม่ตรงกับที่รายงาน</h4><div class="table-wrap"><table class="tbl">${head}${bad.map(x => line(Object.assign({ s: (x.res.seats || [])[0] }, x), '<span class="au-b au-bad">ผลไม่ตรง</span>')).join('')}</table></div>` : ''}
     ${helper.length ? `<h4>เกมที่เปิดผู้ช่วย AI (ไม่ขึ้นหอเกียรติยศอยู่แล้ว)</h4><div class="table-wrap"><table class="tbl">${head}${helper.map(x => line(x, `<span class="au-b au-help">ตรงกับ AI ${auditPct(x.s)}%</span>`)).join('')}</table></div>` : ''}`;
+}
+
+// ---------- the nightly check of the hall (version 7 of the script, ruled 16 Nov): its last night and its blocks ----------
+function auditNightlyHtml(n) {
+  if (!n) return '';   // a script before version 7 says nothing of it
+  const last = n.last, why = { nolog: 'ส่งผลโดยไม่มีบันทึกการเดิน' };
+  const rows = (n.blocked || []).map(b => `<tr><td class="nowrap">${esc(fmtTime(b.at))}</td><td><span class="mono">${esc(String(b.by).replace(/^u:/, ''))}</span></td><td>${esc(b.state)} ${esc(String(b.score))}</td>
+    <td>${esc(why[b.reason] || b.reason)}</td><td><button type="button" class="btn sm ghost" data-unblock="${esc(b.by)}">ปลดระงับ</button></td></tr>`).join('');
+  return `<h3>ตรวจหอเกียรติยศทุกคืน</h3><div class="au-box">
+    <p class="small">${last ? `รอบล่าสุด ${esc(fmtTime(last.at))} · ${last.waiting && !n.from ? 'ยังไม่ตรวจ เพราะยังไม่มีผลใดส่งบันทึกการเดินมาด้วย' : `ตรวจ ${last.checked} รายชื่อ · นำออก ${last.removed} · ระงับ ${last.blocked} บัญชี`}` : 'ยังไม่เคยตรวจ ตั้งทริกเกอร์รายวันให้ nightlyHofCheck ตาม README'}${n.from ? ` · ตรวจเฉพาะผลที่เข้ามาตั้งแต่ ${esc(fmtTime(n.from))} (ผลแรกที่มีบันทึกการเดินติดมา)` : ' · เริ่มนับเมื่อผลแรกที่มีบันทึกการเดินติดมาเข้าหอ'}</p>
+    ${rows ? `<div class="table-wrap"><table class="tbl"><tr><th>ระงับเมื่อ</th><th>บัญชี</th><th>ผลที่พบ</th><th>เหตุ</th><th></th></tr>${rows}</table></div>` : '<p class="muted small">ยังไม่มีบัญชีที่ถูกระงับ</p>'}
+    <p class="tiny muted">ผลที่ถูกนำออกเก็บไว้ในชีต hof-flagged พร้อมเหตุ ปลดระงับแล้วบัญชีส่งผลและเขียนความคิดเห็นได้อีก ส่วนผลที่ออกไปแล้วไม่กลับเข้าหอเอง</p></div>`;
+}
+function wireNightly(root) {
+  root.querySelectorAll('[data-unblock]').forEach(b => b.onclick = async () => {
+    const yes = await confirmBox('ปลดระงับบัญชีนี้?', 'บัญชีนี้จะส่งผลเข้าหอเกียรติยศและเขียนความคิดเห็นได้อีก ผลที่ถูกนำออกไปแล้วไม่กลับมาเอง', 'ปลดระงับ');
+    if (!yes) return;
+    const j = await statsCall({ action: 'unblock', by: b.dataset.unblock });
+    notify(j && j.ok ? `${ICON('star')} ปลดระงับแล้ว` : `${ICON('x')} ปลดระงับไม่สำเร็จ: ${esc(auditErrText(j && j.err))}`, 5000);
+    showStats();
+  });
 }
 
 // ---------- the hall of fame, on the developer device: check a record against its game ----------
@@ -14244,15 +14336,15 @@ async function auditHofRecord(r) {
   const key = 'hof:' + r.id;
   if (auditMemo.has(key)) return auditMemo.get(key);
   if (!hofOnline()) return { ok: false, err: 'offline' };
-  const j = await statsCall({ action: 'hofLog', rec: { gid: typeof r.gid === 'string' ? r.gid : '', seed: r.seed, state: r.state, score: r.score, rules: r.rules, n: r.n } });
+  const j = await statsCall({ action: 'hofLog', rec: { id: r.id, gid: typeof r.gid === 'string' ? r.gid : '', seed: r.seed, state: r.state, score: r.score, rules: r.rules, n: r.n } });
   if (!j || !j.ok) {
     const res = { ok: false, err: (j && j.err) || 'empty' };
     if (res.err === 'nolog') auditMemo.set(key, res);   // no log stays no log this visit; a failed call can be pressed again
     return res;
   }
   let rec = null; try { rec = JSON.parse(j.log); } catch (e) { rec = null; }
-  const res = await auditGame(rec);
-  if (res.ok) { res.gid = j.gid; res.ts = j.ts; res.match = auditMatchRecord(res, r); }
+  const res = await auditGame(rec, { only: r.state });
+  if (res.ok) { res.gid = j.gid; res.ts = j.ts; res.match = auditMatchRecord(res, r); res.log = rec; }
   if (res.err !== 'stopped') auditMemo.set(key, res);
   return res;
 }
