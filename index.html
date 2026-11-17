@@ -1030,6 +1030,10 @@ button.au-b:hover { filter: brightness(1.15); }
 .hofban { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 10px 14px; border-radius: 12px; background: rgba(138,58,51,.28); border: 1px solid var(--bad); color: #f6d8d2; }
 .hofban .ic { flex: none; width: 20px; height: 20px; margin-top: 2px; color: var(--bad); }
 .hofban span { display: grid; gap: 2px; }
+/* the developer's warning when the hall of fame script checks with another engine than this page (version 8) */
+.hofwarn { display: flex; gap: 10px; align-items: flex-start; margin: 0 0 12px; padding: 9px 13px; border-radius: 12px; background: rgba(176,132,46,.18); border: 1px solid rgba(214,170,80,.55); font-size: 13px; }
+.hofwarn.bad { background: rgba(138,58,51,.28); border-color: var(--bad); color: #f6d8d2; }
+.hofwarn .ic { flex: none; width: 18px; height: 18px; margin-top: 1px; }
 .hofban small { color: #e0b8b0; font-size: 11.5px; }
 /* star rating: optional on a comment, shown only when given */
 .rate { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 4px; }
@@ -5688,7 +5692,25 @@ function addStigma(G, P, k, s, n) { P.stigma += k; scoreNote(G, P, -k, s, n); }
 // some regime names already start with ระบอบ (ระบอบขุนศึก); avoid writing it twice in ledger labels
 function regLabel(name) { return /^ระบอบ/.test(name) ? name : 'ระบอบ' + name; }
 K.log = log;
-async function ask(G, P, req) { return G.io.ask(G, P, req); }
+// Answers are not trusted (ruled 17 Nov 2026): a peer online, a saved game or a forged move log may send any JSON, and the
+// hall of fame script plays move logs again with this engine. An answer to a question with options must be one of the
+// options not turned off, or nothing where the question allows nothing; anything else becomes nothing where that is
+// allowed, else the first option not turned off. Research also takes -1 for none, as the AI answers it. The page and the
+// AI only ever answer this way, so every honest game plays as before. Numbers inside the other answers go through cnt
+const firstOpen = req => { const o = req.options.find(o => !o.disabled); return o ? o.value : null; };
+function legalAnswer(req, v) {
+  if (!req || !Array.isArray(req.options)) return v;
+  if (v == null) return req.allowNone || req.allowBack ? null : firstOpen(req);
+  if (req.kind === 'researchPick' && v === -1) return v;
+  const s = JSON.stringify(v);
+  const o = req.options.find(o => !o.disabled && JSON.stringify(o.value) === s);
+  if (o) return o.value;
+  return req.allowNone || req.allowBack ? null : firstOpen(req);
+}
+K.legalAnswer = legalAnswer;
+// a count inside an answer (goods to sell or buy, workers on a project): a whole number above zero, else nothing
+const cnt = x => typeof x === 'number' && Number.isInteger(x) && x > 0 ? x : 0;
+async function ask(G, P, req) { return legalAnswer(req, await G.io.ask(G, P, req)); }
 async function emit(G, ev, data) { if (G.io.event) await G.io.event(G, ev, data); }
 
 // ---------- setup ----------
@@ -6574,18 +6596,19 @@ async function doBuild(G, P, uid) {
 
 // commerce plan: {sells:{t:n}, buys:[{pid, puid, n}], central:{t:n}}
 async function doCommerce(G, P, plan) {
+  if (!plan || typeof plan !== 'object') plan = {};
   const sellP = marketSellPrice(G, P);
   let law = has(P, 'กฎหมายตราชั่ง') ? 3 : 0;
   const sold = [], fx = { t: 'trade', pid: P.id, sells: [], buys: [], central: [] };
   for (const t of GOODS) {
-    const n = Math.min((plan.sells && plan.sells[t]) || 0, goodsOf(P, t));
+    const n = Math.min(cnt(plan.sells && plan.sells[t]), goodsOf(P, t));
     if (n <= 0) continue;
     // the player may say where every unit comes from: plan.from[t] = {wh: n, <project uid>: n}; what it leaves out (or
     // asks beyond what a place holds) comes by the state's payment order
     let left = n;
     const from = plan.from && typeof plan.from[t] === 'object' ? plan.from[t] : null;
     if (from) for (const key of Object.keys(from)) {
-      const want = Math.min(left, Math.max(0, Math.floor(+from[key] || 0)));
+      const want = Math.min(left, cnt(from[key]));
       if (!want) continue;
       if (key === 'wh') { const x = Math.min(want, P.wh[t]); P.wh[t] -= x; left -= x; continue; }
       const pr = P.projects.find(p => String(p.uid) === key && p.d.out === t);
@@ -6601,11 +6624,11 @@ async function doCommerce(G, P, plan) {
   const paid = {}, units = {};
   let fromStates = 0;
   const bought = [];
-  for (const b of (plan.buys || [])) {
-    const S = G.players[b.pid]; if (!S || S === P) continue;
+  for (const b of Array.isArray(plan.buys) ? plan.buys : []) {
+    const S = b && Number.isInteger(b.pid) ? G.players[b.pid] : null; if (!S || S === P) continue;
     const proj = S.projects.find(p => p.uid === b.puid); if (!proj || proj.d.sale == null) continue;
     const price = salePrice(G, S, proj);
-    let n = Math.min(b.n, proj.goods, cap - used, Math.floor(P.grav / price));
+    let n = Math.min(cnt(b.n), proj.goods, cap - used, Math.floor(P.grav / price));
     if (n <= 0) continue;
     proj.goods -= n; P.wh[proj.d.out] += n; P.grav -= n * price; S.grav += n * price;
     used += n; fromStates += n; paid[S.id] = (paid[S.id] || 0) + n * price; units[S.id] = (units[S.id] || 0) + n;
@@ -6614,7 +6637,7 @@ async function doCommerce(G, P, plan) {
   }
   const mp = marketBuyPrice(G, P);
   for (const t of GOODS) {
-    let n = Math.min((plan.central && plan.central[t]) || 0, cap - used, Math.floor(P.grav / mp));
+    let n = Math.min(cnt(plan.central && plan.central[t]), cap - used, Math.floor(P.grav / mp));
     if (n <= 0) continue;
     P.grav -= n * mp; P.wh[t] += n; used += n; bought.push(`${RES_NAME[t]} ${n} จากตลาดกลาง (${n * mp})`); fx.central.push({ t, n, g: n * mp });
   }
@@ -7270,9 +7293,11 @@ async function playerTurn(G, P, lap) {
   for (let guard = 0; guard < 600 && !played; guard++) {
     const opts = turnOptions(G, P);
     const d = await ask(G, P, { kind: 'turn', opts, lap });
-    if (!d) continue;
+    if (!d || typeof d !== 'object') continue;
     if (d.type === 'activate') { await activate(G, P, d.uid); await emit(G, 'update'); continue; }
-    if (d.type === 'play') played = (await playAction(G, P, d.card, d.mode)) !== false;
+    // only a play the turn offers (ruled 17 Nov): a card in a mode the turn does not list for it is no play. Whether the
+    // play can be done is checked as it goes on (a build nobody can pay or a command with no target goes back)
+    if (d.type === 'play' && opts.plays.some(p => p.card === d.card && p.mode === d.mode)) played = (await playAction(G, P, d.card, d.mode)) !== false;
   }
   if (!played) {
     // every turn must play a card: fall back to the simplest legal play
@@ -7312,7 +7337,7 @@ async function productionPhase(G) {
     // an empty answer (a dropped peer, a test) places nobody rather than stopping the game; with workers that stay, it keeps the old placement
     if (!a || typeof a !== 'object' || !a.w) a = G.rules.workersStay ? keptPlacement(P) : { w: {}, lamp: null };
     let left = totalWorkers(P);
-    for (const pr of P.projects) { const n = Math.max(0, Math.min(pr.d.workers, (a.w && a.w[pr.uid]) || 0, left)); pr.workers = n; left -= n; }
+    for (const pr of P.projects) { const n = Math.max(0, Math.min(pr.d.workers, cnt(a.w[pr.uid]), left)); pr.workers = n; left -= n; }
     await emit(G, 'fx', { t: 'workers', pid: P.id });
     const lampOk = has(P, 'โคมไฟกริดมานา');
     const lamp = lampOk ? a.lamp : null;
@@ -8927,7 +8952,7 @@ function flagHtml(meta, cls) {
   if (!meta) return `<span class="flag ${cls || ''} cloak">${ICON('cloak')}</span>`;
   const f = meta.flag || {};
   const inner = f.img ? `<img src="${esc(f.img)}" alt="">` : flagSVG(f.seed || 1, meta.color);
-  return `<span class="flag ${cls || ''}" style="--pc:${esc(meta.color || '#888')}">${inner}</span>`;
+  return `<span class="flag ${cls || ''}" style="--pc:${/^#[0-9a-f]{6}$/i.test(String(meta.color)) ? meta.color : '#888'}">${inner}</span>`;
 }
 const pFlag = (P, cls) => P ? flagHtml(seatOf(P) || { color: P.color, flag: { seed: P.id + 7 } }, cls) : flagHtml(null, cls);
 function styleName(P) {
@@ -9595,6 +9620,8 @@ function althPerson(rand) {
 // ---------- procedural flags (SVG) for states without a drawn flag ----------
 const FLAG_PAL = ['#b8322a', '#1f4e8c', '#e3b33c', '#2f7d4a', '#f2ead5', '#20262e', '#7b3fa0', '#d66a1f', '#2a8c8c', '#8c1f3f'];
 function flagSVG(seed, base) {
+  // the colour lands inside the picture's markup: only #rrggbb gets there (a record from a peer may carry anything)
+  if (!(typeof base === 'string' && /^#[0-9a-f]{6}$/i.test(base))) base = null;
   const r = (typeof K !== 'undefined' && K.rng) ? K.rng((seed >>> 0) || 1) : Math.random;
   const pick = () => FLAG_PAL[Math.floor(r() * FLAG_PAL.length)];
   let a = base || pick(), b = pick(), c = pick();
@@ -10982,7 +11009,10 @@ async function showHallOfFame() {
     if (dev) { wireRemove(body, 'hof'); wireHofAudit(body, top); }
   } else {
     const [remote, online, , block] = await Promise.all([fetchRepoJSON('comments.json'), hofGet('cmt', 200), fetchRemoved(), hofFetchMe()]);
-    const list = cmtMerge(store.get('comments', []), remote.concat(online, lobbyComments()));
+    // with the script online (ruled 17 Nov) the board is the script's comments, the repository file and this browser's own
+    // comments on their way: a comment that came from peers never went through the script's checks
+    const net = hofOnline(), mineC = cmtMine();
+    const list = cmtMerge(net ? store.get('comments', []).filter(c => c && mineC.has(c.id)) : store.get('comments', []), remote.concat(online, net ? [] : lobbyComments()));
     store.set('comments', list);
     if (!body.isConnected) return;
     // with the online board, writing needs a Google sign-in (or the developer device): the script keeps who wrote what
@@ -11027,6 +11057,7 @@ async function showHallOfFame() {
       const c = { id: uid(8), leader: profile.leader, title: String(profile.title || '').slice(0, 32), state: profile.state && profile.state.th || '', text, at: new Date().toISOString().slice(0, 23).replace('T', ' '), by: hashStr(profile.id).toString(36) };
       if (stars) c.stars = stars;
       store.set('comments', cmtMerge(store.get('comments', []), [c]));
+      cmtAddMine(c.id);
       shareComment(c);
       if (hofOnline()) sendComment(c);
       showHallOfFame();
@@ -11090,9 +11121,15 @@ function hofTable(list, dev) {
 // a rating is optional: no stars field, or a whole number of stars from 1 to 5
 const okStars = s => s == null || (Number.isInteger(s) && s >= 1 && s <= 5);
 // a comment's time is 'YYYY-MM-DD HH:MM:SS.mmm' (older comments stop at the minute); the list shows the minute
+// the comments written in this browser (ruled 17 Nov): with the script online the board shows these beside the script's
+function cmtMine() { const m = store.get('cmtMine', []); return new Set(Array.isArray(m) ? m : []); }
+function cmtAddMine(id) { const m = store.get('cmtMine', []); store.set('cmtMine', (Array.isArray(m) ? m.filter(x => x !== id && typeof x === 'string') : []).concat(id).slice(-300)); }
+// a comment from any source must be of its shape, the ones kept in this browser too (a peer's comment was kept there)
+const validComment = c => c && typeof c.id === 'string' && c.id.length < 20 && typeof c.text === 'string' && c.text.length <= 280 && typeof c.leader === 'string' && c.leader.length <= 24
+  && (c.title == null || (typeof c.title === 'string' && c.title.length <= 32)) && (c.state == null || (typeof c.state === 'string' && c.state.length <= 24)) && (c.at == null || typeof c.at === 'string') && okStars(c.stars);
 function cmtMerge(list, add) {
-  const by = new Map(list.filter(c => c && !isRemoved('cmt', c.id)).map(c => [c.id, c]));
-  for (const c of add || []) if (c && typeof c.id === 'string' && c.id.length < 20 && typeof c.text === 'string' && c.text.length <= 280 && typeof c.leader === 'string' && c.leader.length <= 24 && (c.title == null || (typeof c.title === 'string' && c.title.length <= 32)) && okStars(c.stars) && !by.has(c.id) && !isRemoved('cmt', c.id)) by.set(c.id, c);
+  const by = new Map((Array.isArray(list) ? list : []).filter(c => validComment(c) && !isRemoved('cmt', c.id)).map(c => [c.id, c]));
+  for (const c of add || []) if (validComment(c) && !by.has(c.id) && !isRemoved('cmt', c.id)) by.set(c.id, c);
   return [...by.values()].sort((a, b) => String(b.at).localeCompare(String(a.at))).slice(0, 200);
 }
 const starRow = (n, label) => `<span class="cstars" role="img" aria-label="${esc(label)}">${'★'.repeat(n)}<i>${'★'.repeat(5 - n)}</i></span>`;
@@ -13525,8 +13562,18 @@ function hofMerge(list, add) {
   for (const r of add || []) if (keep(r) && !by.has(r.id)) by.set(r.id, r);
   return [...by.values()].sort(hofOrder).slice(0, 60);
 }
+// every field a hall row shows must be of its type (ruled 17 Nov): a record from a peer or a file is not trusted, and a
+// colour or a number reaches the page's markup
+const recInt = (x, lo, hi) => Number.isInteger(x) && x >= lo && x <= hi;
 function validRecord(r) {
-  return r && typeof r === 'object' && typeof r.id === 'string' && r.id.length < 20 && typeof r.score === 'number' && isFinite(r.score) && Math.abs(r.score) < 500
+  return r && typeof r === 'object' && typeof r.id === 'string' && /^[a-z0-9]{1,19}$/.test(r.id) && recInt(r.score, -499, 499)
+    && recInt(r.n, 2, 4) && recInt(r.margin, -499, 499) && (r.military == null || recInt(r.military, 0, 999)) && (r.projects == null || recInt(r.projects, 0, 99)) && (r.legit == null || recInt(r.legit, -999, 999))
+    && r.research && typeof r.research === 'object' && ['culture', 'innovation', 'building'].every(k => r.research[k] == null || recInt(r.research[k], 0, 99))
+    && (r.color == null || (typeof r.color === 'string' && /^#[0-9a-f]{6}$/i.test(r.color)))
+    && (!r.flag || (typeof r.flag === 'object' && (r.flag.seed == null || recInt(r.flag.seed, 0, 4294967295))))
+    && (r.at == null || (typeof r.at === 'string' && r.at.length <= 10)) && (r.rules == null || (typeof r.rules === 'string' && r.rules.length <= 8))
+    && (r.latin == null || (typeof r.latin === 'string' && r.latin.length <= 24)) && (r.meaning == null || (typeof r.meaning === 'string' && r.meaning.length <= 60))
+    && (!r.style || (typeof r.style === 'object' && (r.style.label == null || (typeof r.style.label === 'string' && r.style.label.length <= 40)) && (r.style.desc == null || (typeof r.style.desc === 'string' && r.style.desc.length <= 160))))
     && typeof r.state === 'string' && r.state.length <= 24 && typeof r.leader === 'string' && r.leader.length <= 24
     && (r.title == null || (typeof r.title === 'string' && r.title.length <= 32))
     && (r.lvl == null || !!AI.LEVELS[r.lvl])
@@ -13704,6 +13751,11 @@ async function hofSignIn(cred) {
 // the move log of each win this page sends (version 7 of the script): the record id -> the log, kept from the end of the
 // game until the record is in. The nightly check takes out a record that came without its log
 const hofLogs = new Map();
+// the build of the engine, AI, card data and rule sets this page plays (build.py writes it): the script, which carries a
+// copy of them for its replay check (version 8), compares it with its own
+const ENGINE_STAMP = '1bff1744d13b9775';
+// the script plays the whole game again before the win enters the hall: the answer may take a while
+const HOF_SEND_MS = 90000;
 // send one record; the answer says where it stands, or what is missing
 async function hofSubmit(rec) {
   if (!hofOnline()) return { off: true };
@@ -13711,7 +13763,7 @@ async function hofSubmit(rec) {
   const s = hofTicket();
   if (!s) return { need: 'auth' };
   try {
-    const j = await hofCall({ action: 'hof', session: s.t, rec, log: hofLogs.get(rec.id) || '', pv: 7 });
+    const j = await hofCall({ action: 'hof', session: s.t, rec, log: hofLogs.get(rec.id) || '', pv: 8, es: ENGINE_STAMP }, HOF_SEND_MS);
     if (j && j.err === 'session') store.del(acctKey('hofSession'));
     if (j && j.err === 'blocked') hofSetBlock({ at: j.at, notice: j.msg });
     if (j && j.ok) hofLogs.delete(rec.id);
@@ -13796,6 +13848,7 @@ async function hofFetchMe() {
 }
 const hofBlockHtml = b => b ? `<div class="hofban">${ICON('x')}<span><b>${esc(b.notice)}</b>${b.at ? `<small>ตั้งแต่ ${esc(fmtTime(b.at))}</small>` : ''}</span></div>` : '';
 const HOF_ERR = { blocked: 'บัญชีนี้ถูกระงับจากหอเกียรติยศ', session: 'ตั๋วยืนยันตัวตนหมดอายุ', record: 'ข้อมูลบันทึกไม่ผ่านการตรวจ', limit: 'บัญชีนี้ส่งครบ 20 บันทึกในวันนี้แล้ว', net: 'ติดต่อหอเกียรติยศออนไลน์ไม่ได้', empty: 'หอเกียรติยศออนไลน์ไม่ตอบ',
+  replay: 'ผลไม่ตรงกับเกมที่เล่นจริง', version: 'หน้าเกมกับหอเกียรติยศใช้กติกาคนละรุ่น', nolog: 'ผลนี้ไม่มีบันทึกการเดิน', busy: 'หอเกียรติยศออนไลน์ยุ่งอยู่', size: 'ข้อมูลใหญ่เกินไป',
   comment: 'ความคิดเห็นไม่ผ่านการตรวจ', forbidden: 'ลบได้เฉพาะเครื่องผู้พัฒนา', id: 'รหัสรายการไม่ถูกต้อง' };
 const CMT_LIMIT = 'บัญชีนี้ส่งครบ 30 ความคิดเห็นในวันนี้แล้ว';
 // the end screen line for a win: sends at once, says the rank, offers a retry or a fresh sign-in
@@ -13815,7 +13868,11 @@ async function hofAutoNote(el, rec, gh) {
     acctWaiters.push(() => hofAutoNote(el, rec, gh));
     return;
   }
-  el.innerHTML = `${ICON('star')} ส่งเข้าหอเกียรติยศออนไลน์ไม่สำเร็จ: ${esc(HOF_ERR[j && j.err] || 'ไม่ทราบสาเหตุ')}${j && j.msg ? ` (${esc(j.msg)})` : ''} <button class="btn sm" data-hofretry="1">ลองอีกครั้ง</button>${gh ? ` <a class="btn sm" href="${esc(gh)}" target="_blank" rel="noopener">ส่งผ่าน GitHub แทน</a>` : ''}`;
+  // the script played the game again and found another result, or the page is not the one the script checks with
+  // (version 8): sending again changes nothing, so the line only says why
+  const final = j && ['replay', 'version', 'nolog', 'record'].includes(j.err);
+  const why = final && j.msg ? esc(j.msg) : `${esc(HOF_ERR[j && j.err] || 'ไม่ทราบสาเหตุ')}${j && j.msg ? ` (${esc(j.msg)})` : ''}`;
+  el.innerHTML = `${ICON(final ? 'x' : 'star')} ส่งเข้าหอเกียรติยศออนไลน์ไม่สำเร็จ: ${why}${final ? '' : ` <button class="btn sm" data-hofretry="1">ลองอีกครั้ง</button>${gh ? ` <a class="btn sm" href="${esc(gh)}" target="_blank" rel="noopener">ส่งผ่าน GitHub แทน</a>` : ''}`}`;
   const b = el.querySelector('[data-hofretry]'); if (b) b.onclick = () => hofAutoNote(el, rec, gh);
 }
 
@@ -13946,7 +14003,7 @@ async function showStats() {
     body.innerHTML = `<p>ยังไม่มีสถิติ เพราะหน้านี้ยังไม่ได้ต่อสคริปต์หอเกียรติยศ ตั้งสคริปต์ตาม README แล้วใส่ที่อยู่ใน config.js ที่ hofEndpoint สถิติจะเริ่มเก็บตั้งแต่ตอนนั้น</p>`;
     return;
   }
-  const j = await statsCall({ action: 'stats', days: statsDays });
+  const [j] = await Promise.all([statsCall({ action: 'stats', days: statsDays }), hofFetchReset()]);   // the status names the script's engine
   if (!body.isConnected) return;
   if (!j || !j.ok) { body.innerHTML = `<p class="bad">${ICON('x')} อ่านสถิติไม่ได้: ${esc(STATS_ERR[j && j.err] || 'ไม่ทราบสาเหตุ')}</p>`; return; }
   const v = j.visitors, g = j.games;
@@ -13968,7 +14025,7 @@ async function showStats() {
         ${j.byDay.slice().reverse().map(d => `<tr><td>${fmtDay(d.day)}</td><td class="num"><b>${d.visitors}</b></td><td class="num">${d.members}</td><td class="num">${d.guests}</td><td class="num">${d.starts}</td><td class="num">${d.ends}</td><td class="num">${d.quits}</td></tr>`).join('') || '<tr><td colspan="7" class="muted">ยังไม่มีคนเข้า</td></tr>'}</table></div></div>
     </div>
     ${statsCardsHtml(j.cards || {})}
-    ${auditNightlyHtml(j.nightly)}
+    ${guardWarnHtml()}${guardHtml(j.guard)}${auditNightlyHtml(j.nightly)}
     ${auditBoxHtml()}
     <h3>เกมล่าสุด</h3><div class="table-wrap"><table class="tbl st-recent"><tr><th>เวลา</th><th>ผู้เล่น</th><th>โหมด</th><th>ชุดกฎ</th><th>เหตุการณ์</th><th class="num">รอบ</th><th class="num">นาที</th><th>ผล</th><th></th></tr>
       ${j.recent.map(r => `<tr><td class="nowrap">${esc(fmtTime(r.ts))}</td><td>${statsWho(r)}</td><td>${esc(MODE_TH[r.mode] || r.mode)} ${r.n} รัฐ${r.level && LEVEL_TH[r.level] ? ` · AI ${LEVEL_TH[r.level]}` : ''}</td><td>${esc(r.rules)}</td>
@@ -14350,8 +14407,28 @@ async function auditHofRecord(r) {
 }
 const hofAuditMeta = (r, res) => ({ title: r.state, winner: r.state, gid: res.gid, ts: res.ts, when: r.at || '', match: res.match,
   matchTxt: `เล่นซ้ำแล้ว ${r.state} ชนะด้วยคะแนน ${r.score} ตรงกับบันทึกในหอเกียรติยศ`, missTxt: `เล่นซ้ำแล้วผู้ชนะหรือคะแนนไม่ตรงกับบันทึกในหอเกียรติยศ (${r.state} ${r.score})` });
+// the version and the engine stamp of the script, as its status answered (version 8): the developer sees when the
+// script checks with another engine than this page plays, which turns this page's winners away
+let hofScript = null;
+function guardWarnHtml() {
+  if (!hofOnline() || !hofScript) return '';
+  if (hofScript.v < 8 || !hofScript.eng) return `<div class="hofwarn">${ICON('lock')}<span>สคริปต์หอเกียรติยศยังเป็นรุ่น ${hofScript.v || '?'} จึงยังไม่เล่นเกมซ้ำก่อนรับผล วางไฟล์ scripts/hof-apps-script.gs ชุดใหม่แล้วทำ New version</span></div>`;
+  if (hofScript.eng !== ENGINE_STAMP) return `<div class="hofwarn bad">${ICON('x')}<span>สคริปต์หอเกียรติยศตรวจด้วยเอนจิน ${esc(hofScript.eng)} แต่หน้านี้เป็น ${esc(ENGINE_STAMP)} ผู้ชนะจากหน้านี้จะถูกปฏิเสธจนกว่าจะวางไฟล์ scripts/hof-apps-script.gs ชุดเดียวกับหน้านี้แล้วทำ New version</span></div>`;
+  return '';
+}
+// the wins the door of the script turned away lately (version 8), on the statistics page
+const GUARD_WHY = { replay: 'ผลไม่ตรงกับเกมที่เล่นซ้ำ', record: 'บันทึกการเดินไม่ใช่ของเกมนี้', version: 'หน้าเกมคนละรุ่นกับสคริปต์', nolog: 'ไม่มีบันทึกการเดิน (หน้าเกมรุ่นเก่า)', busy: 'สคริปต์ตรวจไม่ทัน' };
+function guardHtml(g) {
+  if (!g) return '';   // a script before version 8 says nothing of it
+  const rows = (g.refused || []).map(x => `<tr><td class="nowrap">${esc(fmtTime(x.at))}</td><td><span class="mono">${esc(String(x.by).replace(/^u:/, ''))}</span></td><td>${esc(x.state)}${x.score != null ? ' ' + esc(String(x.score)) : ''}</td>
+    <td>${esc(GUARD_WHY[x.why] || x.why)}${x.note ? `<div class="tiny muted">${esc(x.note)}</div>` : ''}</td></tr>`).join('');
+  return `<h3>กันการยัดข้อมูล</h3><div class="au-box">
+    <p class="small">${g.replay ? 'ทุกผลที่ส่งเข้าหอเกียรติยศถูกเล่นซ้ำทั้งเกมด้วยเอนจินของสคริปต์ก่อนรับ' : 'การเล่นซ้ำปิดอยู่ (CONFIG.REPLAY)'} · เอนจินของสคริปต์ <span class="mono">${esc(g.eng || '?')}</span> · หน้านี้ <span class="mono">${esc(ENGINE_STAMP)}</span>${g.eng && g.eng !== ENGINE_STAMP ? ' <b class="bad">ไม่ตรงกัน</b>' : ''}</p>
+    ${rows ? `<div class="table-wrap"><table class="tbl"><tr><th>เมื่อ</th><th>บัญชี</th><th>ผลที่ส่งมา</th><th>เหตุที่ไม่รับ</th></tr>${rows}</table></div>` : '<p class="muted small">30 วันที่ผ่านมาไม่มีผลที่ถูกปฏิเสธ</p>'}
+    <p class="tiny muted">ผลที่ไม่ตรงกับเกมที่เล่นซ้ำครบ 3 ครั้งใน 7 วัน (ค่าใน CONFIG) ระงับบัญชีนั้น ส่วนหน้าเกมคนละรุ่น หน้าเกมรุ่นเก่า และตอนสคริปต์ยุ่งไม่นับ รายละเอียดเต็มอยู่ในชีต hof-flagged</p></div>`;
+}
 function hofDevBar(n) {
-  return `<div class="hofdev"><span class="tiny muted">${ICON('lock')} หลังบ้าน</span><button type="button" class="btn sm" id="hd-audit"${n ? '' : ' disabled'}>${ICON('eye')} ตรวจ AI ทั้ง ${n} อันดับ</button>
+  return guardWarnHtml() + `<div class="hofdev"><span class="tiny muted">${ICON('lock')} หลังบ้าน</span><button type="button" class="btn sm" id="hd-audit"${n ? '' : ' disabled'}>${ICON('eye')} ตรวจ AI ทั้ง ${n} อันดับ</button>
     <span class="grow"></span><button type="button" class="btn sm danger" id="hd-reset">รีเซ็ตหอเกียรติยศ</button></div>`;
 }
 function wireHofAudit(root, list) {
@@ -14407,7 +14484,10 @@ async function hofFetchReset() {
     const r = await fetch(HOF_URL, { cache: 'no-store', signal: ctl ? ctl.signal : undefined });
     if (timer) clearTimeout(timer);
     const j = r.ok ? await r.json() : null;
-    if (j && j.ok && j.app === 'kirana-federation-hof') hofSetReset(Number.isFinite(+j.reset) && +j.reset > 0 ? +j.reset : 0);
+    if (j && j.ok && j.app === 'kirana-federation-hof') {
+      hofSetReset(Number.isFinite(+j.reset) && +j.reset > 0 ? +j.reset : 0);
+      hofScript = { v: +j.v || 0, eng: typeof j.eng === 'string' ? j.eng.slice(0, 32) : '' };
+    }
   } catch (e) { /* offline: the time kept in this browser stands */ }
   return hofResetAt();
 }
